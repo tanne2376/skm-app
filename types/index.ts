@@ -1,0 +1,132 @@
+export type UserRole = 'student' | 'teacher' | 'admin';
+export type BookingStatus = 'confirmed' | 'waitlisted' | 'cancelled';
+export type PaymentMethod = 'app' | 'cash' | 'membership';
+export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'no_refund';
+export type MembershipTier = 'two_per_week' | 'unlimited';
+export type MembershipStatus = 'active' | 'cancelled' | 'past_due';
+export type OneToOneStatus = 'available' | 'booked' | 'cancelled' | 'completed';
+export type LocationType = 'predefined' | 'custom';
+
+export interface Profile {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  role: UserRole;
+  stripe_customer_id: string | null;
+  push_token: string | null;
+  created_at: string;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClassTemplate {
+  id: string;
+  name: string;
+  day_of_week: number; // 1=Mon, 7=Sun (ISODOW)
+  start_time: string;  // "HH:MM:SS"
+  end_time: string;
+  capacity: number;
+  price: number;       // pence
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClassSession {
+  id: string;
+  template_id: string;
+  teacher_id: string | null;
+  session_date: string; // "YYYY-MM-DD"
+  start_time: string;
+  end_time: string;
+  capacity: number | null; // null = use template
+  price: number | null;    // null = use template
+  is_cancelled: boolean;
+  cancellation_reason: string | null;
+  created_at: string;
+}
+
+export interface Booking {
+  id: string;
+  session_id: string;
+  student_id: string;
+  status: BookingStatus;
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
+  stripe_payment_intent_id: string | null;
+  waitlist_position: number | null;
+  booked_at: string;
+  cancelled_at: string | null;
+}
+
+export interface Membership {
+  id: string;
+  student_id: string;
+  tier: MembershipTier;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string;
+  status: MembershipStatus;
+  current_period_start: string;
+  current_period_end: string;
+  created_at: string;
+}
+
+export interface MembershipWeeklyUsage {
+  id: string;
+  membership_id: string;
+  student_id: string;
+  booking_id: string;
+  week_start: string; // "YYYY-MM-DD" Monday of ISO week
+  created_at: string;
+}
+
+export interface OneToOne {
+  id: string;
+  creator_id: string;
+  teacher_id: string;
+  student_id: string | null;
+  title: string;
+  description: string | null;
+  price: number; // pence
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  location_type: LocationType;
+  location_id: string | null;
+  location_text: string | null;
+  status: OneToOneStatus;
+  payment_method: PaymentMethod | null;
+  payment_status: PaymentStatus | null;
+  stripe_payment_intent_id: string | null;
+  created_at: string;
+}
+
+// Composite types used in UI
+export interface ClassSessionWithDetails extends ClassSession {
+  class_templates: ClassTemplate;
+  teacher: Pick<Profile, 'id' | 'full_name'> | null;
+  confirmed_count: number;
+  waitlist_count: number;
+  user_booking?: Booking;
+  effective_capacity: number;
+  effective_price: number;
+}
+
+export interface BookingWithStudent extends Booking {
+  profiles: Pick<Profile, 'id' | 'full_name'>;
+}
+
+export interface OneToOneWithDetails extends OneToOne {
+  teacher: Pick<Profile, 'id' | 'full_name'>;
+  student?: Pick<Profile, 'id' | 'full_name'> | null;
+  location?: Pick<Location, 'id' | 'name' | 'address'> | null;
+}
+
+export interface MembershipWithUsage extends Membership {
+  weekly_usage_count: number; // for two_per_week tier
+}
