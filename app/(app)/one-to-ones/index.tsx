@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { formatGBP } from '@/lib/stripe';
 import { OneToOneWithDetails } from '@/types';
+import { useState } from 'react';
 
 type Tab = 'available' | 'my-sessions';
 
@@ -19,7 +19,10 @@ export default function OneToOnesScreen() {
   const insets = useSafeAreaInsets();
   const { role, session } = useAuth();
   const isTeacher = role === 'teacher' || role === 'admin';
-  const [activeTab, setActiveTab] = useState<Tab>('available');
+  const isAdmin = role === 'admin';
+
+  // Admins default to My Sessions; teachers/students default to Available
+  const [activeTab, setActiveTab] = useState<Tab>(isAdmin ? 'my-sessions' : 'available');
 
   const { data: available, isLoading: loadingAvailable, refetch: refetchAvailable } = useQuery<OneToOneWithDetails[]>({
     queryKey: ['one_to_ones', 'available'],
@@ -55,33 +58,26 @@ export default function OneToOnesScreen() {
   const items = activeTab === 'available' ? available : mySessions;
   const refetch = activeTab === 'available' ? refetchAvailable : refetchMy;
 
+  // Tab order: admins see My Sessions first, teachers see Available first
+  const tabs: { key: Tab; label: string }[] = isAdmin
+    ? [{ key: 'my-sessions', label: 'My Sessions' }, { key: 'available', label: 'Available' }]
+    : [{ key: 'available', label: 'Available' }, { key: 'my-sessions', label: 'My Sessions' }];
+
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <ScreenHeader
-        title="1-to-1 Sessions"
-        rightElement={
-          isTeacher ? (
-            <Button variant="ghost" size="sm" onPress={() => router.push('/(app)/one-to-ones/create')}>
-              + New
-            </Button>
-          ) : undefined
-        }
-      />
+      <ScreenHeader title="1-to-1 Sessions" />
 
       {isTeacher && (
         <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'available' && styles.tabActive]}
-            onPress={() => setActiveTab('available')}
-          >
-            <Text style={[styles.tabText, activeTab === 'available' && styles.tabTextActive]}>Available</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'my-sessions' && styles.tabActive]}
-            onPress={() => setActiveTab('my-sessions')}
-          >
-            <Text style={[styles.tabText, activeTab === 'my-sessions' && styles.tabTextActive]}>My Sessions</Text>
-          </TouchableOpacity>
+          {tabs.map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tab, activeTab === t.key && styles.tabActive]}
+              onPress={() => setActiveTab(t.key)}
+            >
+              <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
@@ -90,6 +86,18 @@ export default function OneToOnesScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
+        ListHeaderComponent={
+          isTeacher && activeTab === 'my-sessions' ? (
+            <Button
+              variant="secondary"
+              size="md"
+              onPress={() => router.push('/(app)/one-to-ones/create')}
+              style={styles.newButton}
+            >
+              + New Session
+            </Button>
+          ) : null
+        }
         renderItem={({ item }) => (
           <OneToOneCard oto={item} onPress={() => router.push(`/(app)/one-to-ones/${item.id}`)} showStudent={activeTab === 'my-sessions'} />
         )}
@@ -140,6 +148,7 @@ const styles = StyleSheet.create({
   tabText: { color: COLORS.grey[400], fontSize: 14, fontWeight: '600' },
   tabTextActive: { color: COLORS.white },
   list: { padding: 16 },
+  newButton: { marginBottom: 16 },
   emptyText: { color: COLORS.grey[600], textAlign: 'center', paddingTop: 60, fontSize: 15 },
   otoRow: { flexDirection: 'row', gap: 8 },
   flex: { flex: 1, gap: 3 },

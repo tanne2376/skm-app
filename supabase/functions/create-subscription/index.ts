@@ -1,5 +1,5 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { createAdminClient, createUserClient } from '../_shared/supabase.ts';
+import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 
 Deno.serve(async (req) => {
@@ -8,9 +8,8 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return errorResponse('Unauthorized', 401);
 
-  const userClient = createUserClient(authHeader);
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) return errorResponse('Unauthorized', 401);
+  const user = await getUserFromToken(authHeader);
+  if (!user) return errorResponse('Unauthorized', 401);
 
   const { tier } = await req.json() as { tier: 'two_per_week' | 'unlimited' };
 
@@ -37,9 +36,8 @@ Deno.serve(async (req) => {
   if (profile?.stripe_customer_id) {
     customerId = profile.stripe_customer_id;
   } else {
-    const { data: authUser } = await userClient.auth.getUser();
     const customer = await stripe.customers.create({
-      email: authUser.user?.email,
+      email: user.email,
       metadata: { supabase_user_id: user.id },
     });
     customerId = customer.id;
@@ -70,9 +68,16 @@ Deno.serve(async (req) => {
     return errorResponse('Failed to initialise payment for membership.', 500);
   }
 
+  // Ephemeral key required by PaymentSheet to manage saved payment methods
+  const ephemeralKey = await stripe.ephemeralKeys.create(
+    { customer: customerId },
+    { apiVersion: '2025-03-31.basil' },
+  );
+
   return jsonResponse({
     subscriptionId: subscription.id,
     clientSecret: paymentIntent.client_secret,
+    ephemeralKeySecret: ephemeralKey.secret,
     customerId,
   });
 });

@@ -1,5 +1,5 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { createAdminClient, createUserClient } from '../_shared/supabase.ts';
+import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -7,9 +7,8 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return errorResponse('Unauthorized', 401);
 
-  const userClient = createUserClient(authHeader);
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) return errorResponse('Unauthorized', 401);
+  const user = await getUserFromToken(authHeader);
+  if (!user) return errorResponse('Unauthorized', 401);
 
   const { session_id, membership_id } = await req.json() as {
     session_id: string;

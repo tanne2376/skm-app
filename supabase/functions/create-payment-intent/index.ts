@@ -1,5 +1,5 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { createAdminClient, createUserClient } from '../_shared/supabase.ts';
+import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 
 Deno.serve(async (req) => {
@@ -8,9 +8,8 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return errorResponse('Unauthorized', 401);
 
-  const userClient = createUserClient(authHeader);
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) return errorResponse('Unauthorized', 401);
+  const user = await getUserFromToken(authHeader);
+  if (!user) return errorResponse('Unauthorized', 401);
 
   const { type, id } = await req.json() as { type: 'class' | 'one_to_one'; id: string };
 
@@ -75,9 +74,8 @@ Deno.serve(async (req) => {
   if (profile?.stripe_customer_id) {
     customerId = profile.stripe_customer_id;
   } else {
-    const { data: authUser } = await userClient.auth.getUser();
     const customer = await stripe.customers.create({
-      email: authUser.user?.email,
+      email: user.email,
       metadata: { supabase_user_id: user.id },
     });
     customerId = customer.id;

@@ -94,7 +94,7 @@ export default function AppLayout() {
 
       {/* ── Settings for all ────────────────────────────────────── */}
       <Tabs.Screen
-        name="settings/index"
+        name="settings"
         options={{
           title: 'Settings',
           tabBarIcon: ({ focused, color }) => <Feather name="settings" size={20} color={color} />,

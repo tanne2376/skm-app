@@ -14,6 +14,7 @@ export interface Profile {
   role: UserRole;
   stripe_customer_id: string | null;
   push_token: string | null;
+  oto_default_price: number;
   created_at: string;
 }
 

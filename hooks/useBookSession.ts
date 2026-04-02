@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
-import { supabase } from '@/lib/supabase';
+import { supabase, invokeFunction } from '@/lib/supabase';
 import { initializePaymentSheet, openPaymentSheet } from '@/lib/stripe';
 import { scheduleClassReminder } from '@/lib/notifications';
 import { useAuth } from './useAuth';
@@ -47,23 +47,19 @@ export function useBookSession() {
         }
 
         // Edge function handles quota insert + booking atomically
-        const { error } = await supabase.functions.invoke('book-with-membership', {
-          body: { session_id: session.id, membership_id: membership.id },
+        const { error } = await invokeFunction('book-with-membership', {
+          session_id: session.id, membership_id: membership.id,
         });
         if (error) throw new Error(error.message ?? 'Failed to book with membership.');
 
       } else {
         // App payment via Stripe
-        const { data, error } = await supabase.functions.invoke('create-payment-intent', {
-          body: { type: 'class', id: session.id },
-        });
+        const { data, error } = await invokeFunction<{
+          clientSecret: string; customerId: string; ephemeralKeySecret: string;
+        }>('create-payment-intent', { type: 'class', id: session.id });
         if (error) throw new Error(error.message ?? 'Could not create payment.');
 
-        const { clientSecret, customerId, ephemeralKeySecret } = data as {
-          clientSecret: string;
-          customerId: string;
-          ephemeralKeySecret: string;
-        };
+        const { clientSecret, customerId, ephemeralKeySecret } = data!;
 
         await initializePaymentSheet({
           paymentIntentClientSecret: clientSecret,
@@ -150,11 +146,9 @@ export function useCancelBooking() {
 
   return useMutation({
     mutationFn: async (bookingId: string) => {
-      const { data, error } = await supabase.functions.invoke('cancel-booking', {
-        body: { bookingId },
-      });
+      const { data, error } = await invokeFunction<{ refunded: boolean; message: string }>('cancel-booking', { bookingId });
       if (error) throw new Error(error.message ?? 'Failed to cancel booking.');
-      return data as { refunded: boolean; message: string };
+      return data!;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['class_sessions'] });

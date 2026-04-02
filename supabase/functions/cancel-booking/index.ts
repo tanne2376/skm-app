@@ -1,5 +1,5 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { createAdminClient, createUserClient } from '../_shared/supabase.ts';
+import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 
 const CANCELLATION_WINDOW_HOURS = 3;
@@ -10,9 +10,8 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return errorResponse('Unauthorized', 401);
 
-  const userClient = createUserClient(authHeader);
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) return errorResponse('Unauthorized', 401);
+  const user = await getUserFromToken(authHeader);
+  if (!user) return errorResponse('Unauthorized', 401);
 
   const { bookingId } = await req.json() as { bookingId: string };
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert, TouchableOpacity, Switch, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants';
@@ -18,6 +19,8 @@ export default function SettingsScreen() {
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [editing, setEditing] = useState(false);
+
+  const isTeacherOrAdmin = role === 'teacher' || role === 'admin';
 
   const updateProfileMutation = useMutation({
     mutationFn: async () => {
@@ -104,13 +107,22 @@ export default function SettingsScreen() {
           <Text style={styles.sectionDesc}>Push notifications are managed by your device. Reminders are scheduled automatically when you book.</Text>
         </Card>
 
+        {/* Session defaults (teachers + admins) */}
+        {isTeacherOrAdmin && (
+          <Card>
+            <Text style={styles.sectionTitle}>1-to-1 Sessions</Text>
+            <View style={styles.adminLinks}>
+              <SettingsRow label="Session Defaults" onPress={() => router.push('/(app)/settings/defaults')} />
+            </View>
+          </Card>
+        )}
+
         {/* Admin tools */}
         {role === 'admin' && (
           <Card>
-            <Text style={styles.sectionTitle}>Admin Tools</Text>
+            <Text style={styles.sectionTitle}>Admin</Text>
             <View style={styles.adminLinks}>
-              <SettingsRow label="Manage Timetable" onPress={() => {}} />
-              <SettingsRow label="Manage Locations" onPress={() => {}} />
+              <SettingsRow label="Manage Locations" onPress={() => router.push('/(app)/settings/locations')} />
             </View>
           </Card>
         )}
@@ -127,6 +139,7 @@ export default function SettingsScreen() {
           Sign Out
         </Button>
       </ScrollView>
+
     </View>
   );
 }
@@ -151,7 +164,7 @@ const styles = StyleSheet.create({
   editBtn: { color: COLORS.accent, fontSize: 14, fontWeight: '600' },
   editForm: { marginTop: 16, gap: 8 },
   fieldLabel: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  input: { backgroundColor: COLORS.grey[800], borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, color: COLORS.white, fontSize: 15, borderWidth: 1, borderColor: COLORS.grey[700] },
+  input: { backgroundColor: COLORS.grey[800], borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, color: COLORS.white, fontSize: 15, borderWidth: 1, borderColor: COLORS.grey[700], marginBottom: 12 },
   sectionTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', marginBottom: 6 },
   sectionDesc: { color: COLORS.grey[400], fontSize: 14 },
   adminLinks: { marginTop: 8, gap: 4 },

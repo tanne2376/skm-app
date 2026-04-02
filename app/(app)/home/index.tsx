@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { COLORS } from '@/constants';
@@ -154,31 +155,23 @@ export default function HomeScreen() {
 
       {/* Payment method modal (only when no membership) */}
       {!isAdmin && (
-        <Modal
-          visible={!!selectedSession}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setSelectedSession(null)}
-        >
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalDismiss} onPress={() => setSelectedSession(null)} />
-            <View style={styles.modalSheet}>
-              <View style={styles.modalHandle} />
-              <Text style={styles.modalTitle}>{selectedSession?.class_templates?.name}</Text>
-              <Text style={styles.modalMeta}>
-                {selectedSession?.start_time?.slice(0, 5)}–{selectedSession?.end_time?.slice(0, 5)}
-              </Text>
-              <View style={styles.modalBody}>
-                <PaymentMethodSelector
-                  price={selectedSession?.effective_price ?? 1500}
-                  membership={null}
-                  onSelect={handlePaymentSelect}
-                  isLoading={isMutating}
-                />
-              </View>
+        <SlideUpModal visible={!!selectedSession} onDismiss={() => setSelectedSession(null)}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>{selectedSession?.class_templates?.name}</Text>
+            <Text style={styles.modalMeta}>
+              {selectedSession?.start_time?.slice(0, 5)}–{selectedSession?.end_time?.slice(0, 5)}
+            </Text>
+            <View style={styles.modalBody}>
+              <PaymentMethodSelector
+                price={selectedSession?.effective_price ?? 1500}
+                membership={null}
+                onSelect={handlePaymentSelect}
+                isLoading={isMutating}
+              />
             </View>
           </View>
-        </Modal>
+        </SlideUpModal>
       )}
     </View>
   );
@@ -373,48 +366,45 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
       </Modal>
 
       {/* Time editor modal */}
-      <Modal visible={showTimeEditor} animationType="fade" transparent onRequestClose={() => setShowTimeEditor(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalDismiss} onPress={() => setShowTimeEditor(false)} />
-          <View style={styles.timeSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.timeSheetTitle}>Edit Time</Text>
-            <Text style={styles.timeSheetSubtitle}>{session.class_templates?.name} — {dateStr}</Text>
-            <View style={styles.timeRow}>
-              <View style={styles.timeField}>
-                <Text style={styles.timeLabel}>Start</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={editStart}
-                  onChangeText={setEditStart}
-                  placeholder="09:00"
-                  placeholderTextColor={COLORS.grey[600]}
-                  keyboardType="numbers-and-punctuation"
-                />
-              </View>
-              <View style={styles.timeField}>
-                <Text style={styles.timeLabel}>End</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={editEnd}
-                  onChangeText={setEditEnd}
-                  placeholder="10:00"
-                  placeholderTextColor={COLORS.grey[600]}
-                  keyboardType="numbers-and-punctuation"
-                />
-              </View>
+      <SlideUpModal visible={showTimeEditor} onDismiss={() => setShowTimeEditor(false)}>
+        <View style={styles.timeSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.timeSheetTitle}>Edit Time</Text>
+          <Text style={styles.timeSheetSubtitle}>{session.class_templates?.name} — {dateStr}</Text>
+          <View style={styles.timeRow}>
+            <View style={styles.timeField}>
+              <Text style={styles.timeLabel}>Start</Text>
+              <TextInput
+                style={styles.timeInput}
+                value={editStart}
+                onChangeText={setEditStart}
+                placeholder="09:00"
+                placeholderTextColor={COLORS.grey[600]}
+                keyboardType="numbers-and-punctuation"
+              />
             </View>
-            <Button
-              variant="primary"
-              size="md"
-              onPress={() => updateTime.mutate()}
-              loading={updateTime.isPending}
-            >
-              Save
-            </Button>
+            <View style={styles.timeField}>
+              <Text style={styles.timeLabel}>End</Text>
+              <TextInput
+                style={styles.timeInput}
+                value={editEnd}
+                onChangeText={setEditEnd}
+                placeholder="10:00"
+                placeholderTextColor={COLORS.grey[600]}
+                keyboardType="numbers-and-punctuation"
+              />
+            </View>
           </View>
+          <Button
+            variant="primary"
+            size="md"
+            onPress={() => updateTime.mutate()}
+            loading={updateTime.isPending}
+          >
+            Save
+          </Button>
         </View>
-      </Modal>
+      </SlideUpModal>
     </Card>
   );
 }
@@ -441,8 +431,6 @@ const styles = StyleSheet.create({
   adminWaitlist: { color: COLORS.grey[400], fontSize: 12, marginTop: 2 },
   adminActions: { flexDirection: 'row', gap: 8 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalDismiss: { flex: 1 },
   modalSheet: {
     backgroundColor: COLORS.grey[900],
     borderTopLeftRadius: 20, borderTopRightRadius: 20,

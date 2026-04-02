@@ -11,6 +11,8 @@
     "test:watch": "jest"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.4",
+    "@react-native-picker/picker": "^2.11.1",
     "@stripe/stripe-react-native": "^0.61.0",
     "@supabase/supabase-js": "^2.101.0",
     "@tanstack/react-query": "^5.95.2",

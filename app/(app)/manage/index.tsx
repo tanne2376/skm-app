@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, FlatList, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, Alert, Modal,
+  TouchableOpacity, RefreshControl, Alert,
 } from 'react-native';
+import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, DAY_NAMES } from '@/constants';
@@ -29,6 +30,7 @@ export default function ManageScreen() {
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
   const [editTeacher, setEditTeacher] = useState<Pick<Profile, 'id' | 'full_name'> | null>(null);
+  const [editCapacity, setEditCapacity] = useState('');
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -82,6 +84,7 @@ export default function ManageScreen() {
     setEditStart(template.start_time.slice(0, 5));
     setEditEnd(template.end_time.slice(0, 5));
     setEditTeacher(template.default_teacher ?? null);
+    setEditCapacity(String(template.capacity));
     setEditingTemplate(template);
   }
 
@@ -90,10 +93,12 @@ export default function ManageScreen() {
       if (!editingTemplate) return;
       if (!editName.trim()) throw new Error('Name cannot be empty.');
       if (!editStart.match(/^\d{2}:\d{2}$/) || !editEnd.match(/^\d{2}:\d{2}$/)) throw new Error('Times must be HH:MM.');
+      const cap = parseInt(editCapacity, 10);
+      if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
 
       const { error } = await supabase
         .from('class_templates')
-        .update({ name: editName.trim(), start_time: editStart, end_time: editEnd })
+        .update({ name: editName.trim(), start_time: editStart, end_time: editEnd, capacity: cap })
         .eq('id', editingTemplate.id);
       if (error) throw error;
 
@@ -109,6 +114,7 @@ export default function ManageScreen() {
     },
     onSuccess: () => {
       invalidateAll();
+      setShowTeacherPicker(false);
       setEditingTemplate(null);
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
@@ -124,6 +130,7 @@ export default function ManageScreen() {
     },
     onSuccess: () => {
       invalidateAll();
+      setShowTeacherPicker(false);
       setEditingTemplate(null);
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
@@ -237,10 +244,13 @@ export default function ManageScreen() {
         ))}
       </ScrollView>
 
-      {/* Edit class modal */}
-      {!!editingTemplate && <Modal visible animationType="slide" transparent onRequestClose={() => setEditingTemplate(null)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setEditingTemplate(null)} />
+      {/* Edit class modal — teacher picker lives inside the same Modal to avoid iOS two-modal stacking limitation */}
+      <SlideUpModal
+        visible={!!editingTemplate}
+        onDismiss={() => { setShowTeacherPicker(false); setEditingTemplate(null); }}
+        fullScreen={showTeacherPicker}
+      >
+        {!showTeacherPicker ? (
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Edit Class</Text>
@@ -258,6 +268,9 @@ export default function ManageScreen() {
                 <TextInput style={styles.input} value={editEnd} onChangeText={setEditEnd} keyboardType="numbers-and-punctuation" placeholderTextColor={COLORS.grey[600]} />
               </View>
             </View>
+
+            <Text style={styles.fieldLabel}>Capacity</Text>
+            <TextInput style={styles.input} value={editCapacity} onChangeText={setEditCapacity} keyboardType="number-pad" placeholderTextColor={COLORS.grey[600]} />
 
             <Text style={styles.fieldLabel}>Class Leader</Text>
             <TouchableOpacity style={styles.pickerBtn} onPress={() => setShowTeacherPicker(true)}>
@@ -286,17 +299,16 @@ export default function ManageScreen() {
               </Button>
             </View>
           </View>
-        </View>
-      </Modal>}
-
-      {/* Teacher picker modal */}
-      {showTeacherPicker && <Modal visible animationType="slide" transparent onRequestClose={() => setShowTeacherPicker(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowTeacherPicker(false)} />
-          <View style={[styles.modalSheet, { maxHeight: '60%' }]}>
+        ) : (
+          <View style={[styles.modalSheet, { flex: 1 }]}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Assign Class Leader</Text>
-            <Text style={styles.modalSubtitle}>Selecting a student will promote them to teacher</Text>
+            <View style={styles.pickerHeader}>
+              <TouchableOpacity onPress={() => setShowTeacherPicker(false)}>
+                <Text style={styles.pickerBack}>← Back</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Assign Class Leader</Text>
+              <Text style={styles.modalSubtitle}>Students will be promoted to teacher on assignment</Text>
+            </View>
             <FlatList
               data={allProfiles ?? []}
               keyExtractor={(p) => p.id}
@@ -310,63 +322,60 @@ export default function ManageScreen() {
               )}
             />
           </View>
-        </View>
-      </Modal>}
+        )}
+      </SlideUpModal>
 
       {/* Add class modal */}
-      {showAddClass && <Modal visible animationType="slide" transparent onRequestClose={() => setShowAddClass(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowAddClass(false)} />
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Add Class</Text>
+      <SlideUpModal visible={showAddClass} onDismiss={() => setShowAddClass(false)}>
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Add Class</Text>
 
-            <Text style={styles.fieldLabel}>Name</Text>
-            <TextInput style={styles.input} value={newName} onChangeText={setNewName} placeholder="e.g. Kickboxing" placeholderTextColor={COLORS.grey[600]} />
+          <Text style={styles.fieldLabel}>Name</Text>
+          <TextInput style={styles.input} value={newName} onChangeText={setNewName} placeholder="e.g. Kickboxing" placeholderTextColor={COLORS.grey[600]} />
 
-            <Text style={styles.fieldLabel}>Day</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.dayChip, newDay === d && styles.dayChipActive]}
-                  onPress={() => setNewDay(d)}
-                >
-                  <Text style={[styles.dayChipText, newDay === d && styles.dayChipTextActive]}>
-                    {DAY_NAMES[d].slice(0, 3)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+          <Text style={styles.fieldLabel}>Day</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={[styles.dayChip, newDay === d && styles.dayChipActive]}
+                onPress={() => setNewDay(d)}
+              >
+                <Text style={[styles.dayChipText, newDay === d && styles.dayChipTextActive]}>
+                  {DAY_NAMES[d].slice(0, 3)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
-            <View style={styles.timeRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Start</Text>
-                <TextInput style={styles.input} value={newStart} onChangeText={setNewStart} placeholder="09:00" keyboardType="numbers-and-punctuation" placeholderTextColor={COLORS.grey[600]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>End</Text>
-                <TextInput style={styles.input} value={newEnd} onChangeText={setNewEnd} placeholder="10:00" keyboardType="numbers-and-punctuation" placeholderTextColor={COLORS.grey[600]} />
-              </View>
+          <View style={styles.timeRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>Start</Text>
+              <TextInput style={styles.input} value={newStart} onChangeText={setNewStart} placeholder="09:00" keyboardType="numbers-and-punctuation" placeholderTextColor={COLORS.grey[600]} />
             </View>
-
-            <View style={styles.timeRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Capacity</Text>
-                <TextInput style={styles.input} value={newCapacity} onChangeText={setNewCapacity} keyboardType="number-pad" placeholderTextColor={COLORS.grey[600]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Price</Text>
-                <TextInput style={styles.input} value={newPrice} onChangeText={setNewPrice} keyboardType="decimal-pad" placeholderTextColor={COLORS.grey[600]} />
-              </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>End</Text>
+              <TextInput style={styles.input} value={newEnd} onChangeText={setNewEnd} placeholder="10:00" keyboardType="numbers-and-punctuation" placeholderTextColor={COLORS.grey[600]} />
             </View>
-
-            <Button variant="primary" size="md" onPress={() => addTemplate.mutate()} loading={addTemplate.isPending}>
-              Add Class
-            </Button>
           </View>
+
+          <View style={styles.timeRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>Capacity</Text>
+              <TextInput style={styles.input} value={newCapacity} onChangeText={setNewCapacity} keyboardType="number-pad" placeholderTextColor={COLORS.grey[600]} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>Price</Text>
+              <TextInput style={styles.input} value={newPrice} onChangeText={setNewPrice} keyboardType="decimal-pad" placeholderTextColor={COLORS.grey[600]} />
+            </View>
+          </View>
+
+          <Button variant="primary" size="md" onPress={() => addTemplate.mutate()} loading={addTemplate.isPending}>
+            Add Class
+          </Button>
         </View>
-      </Modal>}
+      </SlideUpModal>
     </View>
   );
 }
@@ -384,7 +393,6 @@ const styles = StyleSheet.create({
 
   emptyText: { color: COLORS.grey[600], textAlign: 'center', paddingTop: 60, fontSize: 15 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: COLORS.grey[900],
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -400,6 +408,8 @@ const styles = StyleSheet.create({
   timeRow: { flexDirection: 'row', gap: 12 },
   editActions: { flexDirection: 'row', gap: 12, marginTop: 4 },
 
+  pickerHeader: { marginBottom: 8 },
+  pickerBack: { color: COLORS.accent, fontSize: 15, fontWeight: '600', marginBottom: 12 },
   pickerBtn: { backgroundColor: COLORS.grey[800], borderRadius: 8, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: COLORS.grey[700], marginBottom: 16 },
   pickerBtnText: { color: COLORS.white, fontSize: 15 },
   pickerBtnPlaceholder: { color: COLORS.grey[600], fontSize: 15 },
