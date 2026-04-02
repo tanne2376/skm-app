@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -9,7 +10,6 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { COLORS } from '@/constants';
@@ -24,13 +24,19 @@ import { useBookSession, useCancelBooking, useJoinWaitlist } from '@/hooks/useBo
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { ClassSessionWithDetails, PaymentMethod, Profile } from '@/types';
+import { ClassSessionWithDetails, PaymentMethod, BookingWithStudent } from '@/types';
+import { PaymentStatusBadge } from '@/components/ui/Badge';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { role } = useAuth();
+  const { role, session: authSession } = useAuth();
   const isAdmin = role === 'admin';
-  const { data: sessions, isLoading, refetch } = useUpcomingSessions();
+  const { data: allSessions, isLoading, refetch } = useUpcomingSessions();
+
+  // Teachers don't see classes they're assigned to teach (those are in My Classes)
+  const sessions = allSessions?.filter(
+    (s) => isAdmin || s.teacher?.id !== authSession?.user.id
+  );
   const { data: membership } = useActiveMembership();
   const bookSession = useBookSession();
   const cancelBooking = useCancelBooking();
@@ -182,7 +188,10 @@ export default function HomeScreen() {
 
 function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   const queryClient = useQueryClient();
-  const [showTeacherPicker, setShowTeacherPicker] = useState(false);
+  const [showTimeEditor, setShowTimeEditor] = useState(false);
+  const [showRoster, setShowRoster] = useState(false);
+  const [editStart, setEditStart] = useState(session.start_time.slice(0, 5));
+  const [editEnd, setEditEnd] = useState(session.end_time.slice(0, 5));
 
   const dateStr = new Date(session.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short',
@@ -190,26 +199,48 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   const spotsLeft = session.effective_capacity - session.confirmed_count;
   const isFull = spotsLeft <= 0;
 
-  const { data: allProfiles } = useQuery<Pick<Profile, 'id' | 'full_name' | 'role'>[]>({
-    queryKey: ['all_profiles'],
+  const { data: rosterBookings, isLoading: rosterLoading } = useQuery<BookingWithStudent[]>({
+    queryKey: ['roster', session.id],
+    enabled: showRoster,
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name, role').order('full_name');
-      return (data ?? []) as Pick<Profile, 'id' | 'full_name' | 'role'>[];
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*, profiles(id, full_name)')
+        .eq('session_id', session.id)
+        .eq('status', 'confirmed')
+        .order('booked_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as BookingWithStudent[];
     },
   });
 
-  const assignTeacher = useMutation({
-    mutationFn: async ({ profileId, needsPromotion }: { profileId: string; needsPromotion: boolean }) => {
-      if (needsPromotion) {
-        const { error: promoteError } = await supabase.from('profiles').update({ role: 'teacher' }).eq('id', profileId);
-        if (promoteError) throw promoteError;
+  const confirmCashMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ payment_status: 'paid' })
+        .eq('id', bookingId)
+        .eq('payment_method', 'cash');
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roster', session.id] }),
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  const updateTime = useMutation({
+    mutationFn: async () => {
+      if (!editStart.match(/^\d{2}:\d{2}$/) || !editEnd.match(/^\d{2}:\d{2}$/)) {
+        throw new Error('Times must be HH:MM format.');
       }
-      const { error } = await supabase.from('class_sessions').update({ teacher_id: profileId }).eq('id', session.id);
+      const { error } = await supabase
+        .from('class_sessions')
+        .update({ start_time: editStart, end_time: editEnd })
+        .eq('id', session.id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['all_profiles'] });
+      setShowTimeEditor(false);
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
@@ -243,29 +274,6 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
     );
   }
 
-  function handleSelectTeacher(profile: Pick<Profile, 'id' | 'full_name' | 'role'>) {
-    const isStudent = profile.role === 'student';
-    if (isStudent) {
-      Alert.alert(
-        'Promote to Teacher',
-        `${profile.full_name} is currently a student. Assigning them will promote their role to teacher.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Promote & Assign',
-            onPress: () => {
-              assignTeacher.mutate({ profileId: profile.id, needsPromotion: true });
-              setShowTeacherPicker(false);
-            },
-          },
-        ],
-      );
-    } else {
-      assignTeacher.mutate({ profileId: profile.id, needsPromotion: false });
-      setShowTeacherPicker(false);
-    }
-  }
-
   return (
     <Card style={styles.adminCard}>
       <View style={styles.adminHeader}>
@@ -274,11 +282,9 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           <Text style={styles.adminMeta}>
             {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
           </Text>
-          <TouchableOpacity onPress={() => setShowTeacherPicker(true)}>
-            <Text style={session.teacher ? styles.adminTeacher : styles.adminTeacherUnassigned}>
-              {session.teacher ? session.teacher.full_name : 'Assign teacher...'}
-            </Text>
-          </TouchableOpacity>
+          {session.teacher && (
+            <Text style={styles.adminTeacher}>{session.teacher.full_name}</Text>
+          )}
         </View>
         <View style={styles.adminStats}>
           <Text style={[styles.adminCount, isFull && styles.adminCountFull]}>
@@ -292,23 +298,11 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
       </View>
 
       <View style={styles.adminActions}>
-        <Button
-          variant="secondary"
-          size="sm"
-          onPress={() =>
-            router.push({ pathname: '/(app)/my-classes/[id]', params: { id: session.id } })
-          }
-        >
+        <Button variant="secondary" size="sm" onPress={() => setShowRoster(true)}>
           Roster
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onPress={() =>
-            router.push({ pathname: '/(app)/timetable/edit-session', params: { sessionId: session.id } })
-          }
-        >
-          Edit
+        <Button variant="secondary" size="sm" onPress={() => setShowTimeEditor(true)}>
+          Edit Time
         </Button>
         <Button
           variant="danger"
@@ -320,26 +314,104 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
         </Button>
       </View>
 
-      {/* Teacher picker modal */}
-      <Modal visible={showTeacherPicker} animationType="slide" transparent onRequestClose={() => setShowTeacherPicker(false)}>
+      {/* Roster modal */}
+      <Modal visible={showRoster} animationType="slide" onRequestClose={() => setShowRoster(false)}>
+        <View style={styles.rosterModal}>
+          <View style={styles.rosterHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rosterTitle}>{session.class_templates?.name}</Text>
+              <Text style={styles.rosterMeta}>
+                {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
+              </Text>
+              <Text style={styles.rosterCount}>{rosterBookings?.length ?? 0} booked</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowRoster(false)}>
+              <Text style={styles.rosterClose}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={rosterBookings ?? []}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ padding: 16 }}
+            renderItem={({ item }) => (
+              <Card style={styles.rosterCard}>
+                <View style={styles.rosterRow}>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Text style={styles.rosterName}>{item.profiles?.full_name}</Text>
+                    <PaymentStatusBadge status={item.payment_status} method={item.payment_method} />
+                  </View>
+                  {item.payment_method === 'cash' && item.payment_status === 'pending' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onPress={() =>
+                        Alert.alert(
+                          'Confirm Cash Payment',
+                          `Mark ${item.profiles?.full_name} as paid in cash?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Confirm', onPress: () => confirmCashMutation.mutate(item.id) },
+                          ],
+                        )
+                      }
+                      loading={confirmCashMutation.isPending}
+                    >
+                      Confirm Cash
+                    </Button>
+                  )}
+                </View>
+              </Card>
+            )}
+            ListEmptyComponent={
+              rosterLoading ? null : (
+                <Text style={styles.rosterEmpty}>No bookings yet for this class.</Text>
+              )
+            }
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          />
+        </View>
+      </Modal>
+
+      {/* Time editor modal */}
+      <Modal visible={showTimeEditor} animationType="fade" transparent onRequestClose={() => setShowTimeEditor(false)}>
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalDismiss} onPress={() => setShowTeacherPicker(false)} />
-          <View style={styles.teacherSheet}>
+          <TouchableOpacity style={styles.modalDismiss} onPress={() => setShowTimeEditor(false)} />
+          <View style={styles.timeSheet}>
             <View style={styles.modalHandle} />
-            <Text style={styles.teacherSheetTitle}>Assign Teacher</Text>
-            <Text style={styles.teacherSheetSubtitle}>Selecting a student will promote them to teacher</Text>
-            <FlatList
-              data={allProfiles ?? []}
-              keyExtractor={(t) => t.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.teacherItem} onPress={() => handleSelectTeacher(item)}>
-                  <Text style={styles.teacherItemName}>{item.full_name}</Text>
-                  <Text style={[styles.teacherItemRole, item.role === 'student' && styles.teacherItemRoleStudent]}>
-                    {item.role}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
+            <Text style={styles.timeSheetTitle}>Edit Time</Text>
+            <Text style={styles.timeSheetSubtitle}>{session.class_templates?.name} — {dateStr}</Text>
+            <View style={styles.timeRow}>
+              <View style={styles.timeField}>
+                <Text style={styles.timeLabel}>Start</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editStart}
+                  onChangeText={setEditStart}
+                  placeholder="09:00"
+                  placeholderTextColor={COLORS.grey[600]}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+              <View style={styles.timeField}>
+                <Text style={styles.timeLabel}>End</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editEnd}
+                  onChangeText={setEditEnd}
+                  placeholder="10:00"
+                  placeholderTextColor={COLORS.grey[600]}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+            </View>
+            <Button
+              variant="primary"
+              size="md"
+              onPress={() => updateTime.mutate()}
+              loading={updateTime.isPending}
+            >
+              Save
+            </Button>
           </View>
         </View>
       </Modal>
@@ -361,8 +433,7 @@ const styles = StyleSheet.create({
   adminInfo: { flex: 1, gap: 3 },
   adminClassName: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   adminMeta: { color: COLORS.grey[400], fontSize: 13 },
-  adminTeacher: { color: COLORS.grey[400], fontSize: 13, textDecorationLine: 'underline' },
-  adminTeacherUnassigned: { color: COLORS.accent, fontSize: 13 },
+  adminTeacher: { color: COLORS.grey[400], fontSize: 13 },
   adminStats: { alignItems: 'flex-end' },
   adminCount: { color: COLORS.white, fontSize: 22, fontWeight: '800' },
   adminCountFull: { color: COLORS.accent },
@@ -386,17 +457,27 @@ const styles = StyleSheet.create({
   modalMeta: { color: COLORS.grey[400], fontSize: 14, marginBottom: 20 },
   modalBody: { gap: 8 },
 
-  teacherSheet: {
+  rosterModal: { flex: 1, backgroundColor: COLORS.black },
+  rosterHeader: { flexDirection: 'row', alignItems: 'flex-start', padding: 16, paddingTop: 60, borderBottomWidth: 1, borderBottomColor: COLORS.grey[800] },
+  rosterTitle: { color: COLORS.white, fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  rosterMeta: { color: COLORS.grey[400], fontSize: 14, marginBottom: 4 },
+  rosterCount: { color: COLORS.grey[600], fontSize: 13 },
+  rosterClose: { color: COLORS.accent, fontSize: 16, fontWeight: '600' },
+  rosterCard: { padding: 12 },
+  rosterRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rosterName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  rosterEmpty: { color: COLORS.grey[600], textAlign: 'center', paddingTop: 40, fontSize: 15 },
+
+  timeSheet: {
     backgroundColor: COLORS.grey[900],
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: COLORS.grey[800],
     paddingBottom: 40, paddingHorizontal: 20, paddingTop: 12,
-    maxHeight: '60%',
   },
-  teacherSheetTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  teacherSheetSubtitle: { color: COLORS.grey[400], fontSize: 13, marginBottom: 16 },
-  teacherItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.grey[800] },
-  teacherItemName: { color: COLORS.white, fontSize: 15 },
-  teacherItemRole: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  teacherItemRoleStudent: { color: COLORS.warning },
+  timeSheetTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  timeSheetSubtitle: { color: COLORS.grey[400], fontSize: 13, marginBottom: 20 },
+  timeRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  timeField: { flex: 1 },
+  timeLabel: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+  timeInput: { backgroundColor: COLORS.grey[800], borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, color: COLORS.white, fontSize: 16, fontWeight: '600', borderWidth: 1, borderColor: COLORS.grey[700], textAlign: 'center' },
 });

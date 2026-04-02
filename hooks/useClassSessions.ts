@@ -63,14 +63,8 @@ export function useClassSessions(from: Date, to: Date) {
   });
 }
 
-// 7-day window so there are always sessions visible regardless of day of week
 export function useUpcomingSessions() {
   const now = new Date();
-  const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  return useClassSessions(now, in7Days);
-}
-
-/** @deprecated use useUpcomingSessions */
-export function useNext24HoursSessions() {
-  return useUpcomingSessions();
+  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  return useClassSessions(now, in24h);
 }

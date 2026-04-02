@@ -1,13 +1,10 @@
 import { useEffect } from 'react';
 import { Tabs, Redirect, useRouter, useSegments } from 'expo-router';
-import { Platform, Text } from 'react-native';
+import { Platform } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { COLORS } from '@/constants';
 import { registerForPushNotifications } from '@/lib/notifications';
-
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
-  return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>;
-}
 
 export default function AppLayout() {
   const { session, role, isLoading } = useAuth();
@@ -52,7 +49,7 @@ export default function AppLayout() {
         name="home/index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <Feather name="home" size={20} color={color} />,
         }}
       />
 
@@ -61,7 +58,7 @@ export default function AppLayout() {
         name="one-to-ones"
         options={{
           title: '1-to-1s',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🥊" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <Feather name="users" size={20} color={color} />,
         }}
       />
 
@@ -70,7 +67,7 @@ export default function AppLayout() {
         name="my-classes"
         options={{
           title: 'My Classes',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <Feather name="clipboard" size={20} color={color} />,
           href: isTeacher ? undefined : null,
         }}
       />
@@ -80,7 +77,7 @@ export default function AppLayout() {
         name="membership/index"
         options={{
           title: 'Membership',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🎖️" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <Feather name="credit-card" size={20} color={color} />,
           href: !isAdmin ? undefined : null,
         }}
       />
@@ -90,7 +87,7 @@ export default function AppLayout() {
         name="manage/index"
         options={{
           title: 'Manage',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <Feather name="sliders" size={20} color={color} />,
           href: isAdmin ? undefined : null,
         }}
       />
@@ -100,7 +97,7 @@ export default function AppLayout() {
         name="settings/index"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <Feather name="settings" size={20} color={color} />,
         }}
       />
 

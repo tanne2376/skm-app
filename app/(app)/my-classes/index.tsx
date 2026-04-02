@@ -17,7 +17,9 @@ export default function MyClassesScreen() {
     queryKey: ['my_classes', session?.user.id],
     enabled: !!session,
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('class_sessions')
         .select(`
@@ -27,6 +29,7 @@ export default function MyClassesScreen() {
         `)
         .eq('teacher_id', session!.user.id)
         .gte('session_date', today)
+        .lte('session_date', tomorrow)
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
