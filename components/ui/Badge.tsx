@@ -47,6 +47,7 @@ export function PaymentStatusBadge({ status, method }: { status: PaymentStatus; 
 export function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
   const map: Record<MembershipStatus, { label: string; variant: BadgeVariant }> = {
     active: { label: 'Active', variant: 'success' },
+    cancelling: { label: 'Cancelling', variant: 'warning' },
     cancelled: { label: 'Cancelled', variant: 'neutral' },
     past_due: { label: 'Payment Due', variant: 'error' },
   };

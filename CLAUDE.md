@@ -103,7 +103,7 @@ lib/
   notifications.ts
 supabase/
   migrations/              # 001–007 applied to amvajuqaxvedxlmszyjh
-  functions/               # 8 Edge Functions (all deployed & ACTIVE)
+  functions/               # 9 Edge Functions (all deployed & ACTIVE)
 ```
 
 ## Edge Functions (all deployed)
@@ -112,7 +112,8 @@ supabase/
 | `create-payment-intent` | ✅ | Class/1-to-1 payment, capacity lock |
 | `book-with-membership` | ✅ | Membership quota check + direct booking |
 | `cancel-booking` | ✅ | Refund logic + waitlist promotion trigger |
-| `create-subscription` | ✅ | Stripe recurring subscription setup |
+| `create-subscription` | ✅ | Stripe recurring subscription setup (anchored to 1st of month) |
+| `cancel-subscription` | ✅ | Cancel membership at end of billing period |
 | `promote-waitlist` | ❌ | FIFO auto-charge on cancellation |
 | `send-notification` | ❌ | Expo Push API wrapper |
 | `stripe-webhook` | ❌ | Idempotent Stripe event handlers |

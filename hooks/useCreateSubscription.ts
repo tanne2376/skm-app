@@ -1,11 +1,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
-import { invokeFunction } from '@/lib/supabase';
+import { invokeFunction, supabase } from '@/lib/supabase';
 import { initializePaymentSheet, openPaymentSheet } from '@/lib/stripe';
 import { MembershipTier } from '@/types';
+import { useAuth } from './useAuth';
+
+/** Poll until the membership row appears (created by the Stripe webhook). */
+async function waitForMembership(userId: string, maxAttempts = 8): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const { data } = await supabase
+      .from('memberships')
+      .select('id')
+      .eq('student_id', userId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (data) return;
+  }
+}
 
 export function useCreateSubscription() {
   const queryClient = useQueryClient();
+  const { session } = useAuth();
 
   return useMutation({
     mutationFn: async (tier: MembershipTier) => {
@@ -26,6 +42,12 @@ export function useCreateSubscription() {
 
       const result = await openPaymentSheet();
       if (!result.success) throw new Error(result.error ?? 'Payment cancelled.');
+
+      // Wait for the Stripe webhook to create the membership row before
+      // returning so the UI switches to the active membership view.
+      if (session?.user.id) {
+        await waitForMembership(session.user.id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership'] });
@@ -40,11 +62,26 @@ export function useCancelSubscription() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (membershipId: string) => {
-      // Get Stripe Customer Portal URL
-      const { data, error } = await invokeFunction<{ url: string }>('get-portal-session');
-      if (error) throw new Error('Could not open subscription management.');
-      return data!;
+    mutationFn: async () => {
+      const { error } = await invokeFunction('cancel-subscription', {});
+      if (error) throw new Error(error.message ?? 'Could not cancel membership.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
+    },
+    onError: (error: Error) => {
+      Alert.alert('Error', error.message);
+    },
+  });
+}
+
+export function useResumeSubscription() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await invokeFunction('resume-subscription', {});
+      if (error) throw new Error(error.message ?? 'Could not resume membership.');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership'] });

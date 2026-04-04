@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, MEMBERSHIP_PRICES_PENCE } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MembershipStatusBadge } from '@/components/ui/Badge';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
-import { useCreateSubscription } from '@/hooks/useCreateSubscription';
+import { useCreateSubscription, useCancelSubscription, useResumeSubscription } from '@/hooks/useCreateSubscription';
 import { formatGBP } from '@/lib/stripe';
 import { MembershipTier } from '@/types';
 
@@ -15,6 +15,8 @@ export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
   const { data: membership, isLoading, refetch } = useActiveMembership();
   const createSubscription = useCreateSubscription();
+  const cancelSubscription = useCancelSubscription();
+  const resumeSubscription = useResumeSubscription();
   const [selecting, setSelecting] = useState<MembershipTier | null>(null);
 
   function handleSubscribe(tier: MembershipTier) {
@@ -64,28 +66,64 @@ export default function MembershipScreen() {
               </View>
             )}
 
-            <Text style={styles.renewalDate}>
-              Renews {new Date(membership.current_period_end).toLocaleDateString('en-GB', {
-                day: 'numeric', month: 'long', year: 'numeric',
-              })}
-            </Text>
+            {membership.status === 'cancelling' ? (
+              <View style={styles.warningBanner}>
+                <Text style={styles.warningText}>
+                  Your membership will end on {new Date(membership.current_period_end).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'long', year: 'numeric',
+                  })}. You can still use it until then.
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.renewalDate}>
+                Renews {new Date(membership.current_period_end).toLocaleDateString('en-GB', {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                })}
+              </Text>
+            )}
 
             {membership.status === 'past_due' && (
               <View style={styles.warningBanner}>
                 <Text style={styles.warningText}>
-                  ⚠ Payment failed — please update your payment method to keep your membership active.
+                  Payment failed — please update your payment method to keep your membership active.
                 </Text>
               </View>
             )}
 
-            <Button
-              variant="ghost"
-              size="sm"
-              style={styles.manageButton}
-              onPress={() => Linking.openURL('https://billing.stripe.com/p/login/test')}
-            >
-              Manage Subscription
-            </Button>
+            {membership.status === 'cancelling' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                style={styles.cancelButton}
+                onPress={() => resumeSubscription.mutate(undefined, { onSuccess: () => refetch() })}
+                loading={resumeSubscription.isPending}
+              >
+                Resume Membership
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                style={styles.cancelButton}
+                onPress={() =>
+                  Alert.alert(
+                    'Cancel Membership',
+                    'Your membership will remain active until the end of the current billing period. Are you sure?',
+                    [
+                      { text: 'Keep Membership', style: 'cancel' },
+                      {
+                        text: 'Cancel Membership',
+                        style: 'destructive',
+                        onPress: () => cancelSubscription.mutate(undefined, { onSuccess: () => refetch() }),
+                      },
+                    ],
+                  )
+                }
+                loading={cancelSubscription.isPending}
+              >
+                Cancel Membership
+              </Button>
+            )}
           </Card>
         )}
 
@@ -125,7 +163,7 @@ export default function MembershipScreen() {
         )}
 
         <Text style={styles.disclaimer}>
-          Memberships do not cover 1-to-1 sessions. Auto-renews monthly. Cancel anytime via Stripe.
+          Memberships do not cover 1-to-1 sessions. Auto-renews on the 1st of each month. Cancel anytime.
         </Text>
       </ScrollView>
     </View>
@@ -191,7 +229,7 @@ const styles = StyleSheet.create({
   renewalDate: { color: COLORS.grey[600], fontSize: 12 },
   warningBanner: { backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
   warningText: { color: COLORS.error, fontSize: 13 },
-  manageButton: { alignSelf: 'flex-start', marginTop: 8 },
+  cancelButton: { alignSelf: 'flex-start', marginTop: 8 },
   sectionTitle: { color: COLORS.white, fontSize: 20, fontWeight: '700' },
   tierCard: { gap: 10 },
   tierCardHighlighted: { borderColor: COLORS.accent, borderWidth: 2 },

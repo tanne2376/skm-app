@@ -15,12 +15,12 @@ Deno.serve(async (req) => {
 
   const adminClient = createAdminClient();
 
-  // Block if active membership already exists
+  // Block if active or cancelling membership already exists
   const { data: existing } = await adminClient
     .from('memberships')
     .select('id')
     .eq('student_id', user.id)
-    .eq('status', 'active')
+    .in('status', ['active', 'cancelling'])
     .maybeSingle();
 
   if (existing) return errorResponse('You already have an active membership.', 409);
@@ -51,19 +51,45 @@ Deno.serve(async (req) => {
     ? Deno.env.get('STRIPE_PRICE_UNLIMITED')!
     : Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK')!;
 
-  // Create subscription with incomplete status so payment is required upfront
+  const amount = tier === 'unlimited' ? 10000 : 8000; // pence
+
+  // Clean up any pending invoice items left from previous failed attempts
+  const pendingItems = await stripe.invoiceItems.list({
+    customer: customerId,
+    pending: true,
+  });
+  for (const item of pendingItems.data) {
+    await stripe.invoiceItems.del(item.id);
+  }
+
+  // Add a one-time invoice item so the first invoice charges the full monthly
+  // amount immediately (the subscription itself won't prorate because we set
+  // proration_behavior to 'none').
+  await stripe.invoiceItems.create({
+    customer: customerId,
+    amount,
+    currency: 'gbp',
+    description: `SKM ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'} — first month`,
+  });
+
+  // Create subscription with billing anchored to the 1st of every month.
+  // proration_behavior 'none' means no prorated charge for the partial first
+  // period — the one-time invoice item above covers it instead.
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: priceId }],
+    billing_cycle_anchor_config: { day_of_month: 1 },
+    proration_behavior: 'none',
     payment_behavior: 'default_incomplete',
     payment_settings: { save_default_payment_method: 'on_subscription' },
-    expand: ['latest_invoice.payment_intent'],
+    expand: ['latest_invoice.confirmation_secret'],
   });
 
   const latestInvoice = subscription.latest_invoice as any;
-  const paymentIntent = latestInvoice?.payment_intent;
+  const confirmationSecret = latestInvoice?.confirmation_secret;
+  const clientSecret = confirmationSecret?.client_secret;
 
-  if (!paymentIntent?.client_secret) {
+  if (!clientSecret) {
     await stripe.subscriptions.cancel(subscription.id);
     return errorResponse('Failed to initialise payment for membership.', 500);
   }
@@ -76,7 +102,7 @@ Deno.serve(async (req) => {
 
   return jsonResponse({
     subscriptionId: subscription.id,
-    clientSecret: paymentIntent.client_secret,
+    clientSecret,
     ephemeralKeySecret: ephemeralKey.secret,
     customerId,
   });

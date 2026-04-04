@@ -3,7 +3,7 @@ export type BookingStatus = 'confirmed' | 'waitlisted' | 'cancelled';
 export type PaymentMethod = 'app' | 'cash' | 'membership';
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'no_refund';
 export type MembershipTier = 'two_per_week' | 'unlimited';
-export type MembershipStatus = 'active' | 'cancelled' | 'past_due';
+export type MembershipStatus = 'active' | 'cancelling' | 'cancelled' | 'past_due';
 export type OneToOneStatus = 'available' | 'booked' | 'cancelled' | 'completed';
 export type LocationType = 'predefined' | 'custom';
 

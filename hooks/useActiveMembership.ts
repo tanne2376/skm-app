@@ -23,7 +23,7 @@ export function useActiveMembership() {
         .from('memberships')
         .select('*')
         .eq('student_id', session!.user.id)
-        .eq('status', 'active')
+        .in('status', ['active', 'cancelling', 'past_due'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
