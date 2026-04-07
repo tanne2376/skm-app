@@ -2,7 +2,7 @@ import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 
-const CANCELLATION_WINDOW_HOURS = 3;
+const CANCELLATION_WINDOW_HOURS = 24;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();

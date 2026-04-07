@@ -23,8 +23,6 @@ export default function OneToOneDetailScreen() {
   const queryClient = useQueryClient();
   const [showPayment, setShowPayment] = useState(false);
 
-  const isTeacherOrAdmin = role === 'teacher' || role === 'admin';
-
   const { data: oto, isLoading } = useQuery<OneToOneWithDetails>({
     queryKey: ['one_to_ones', id],
     queryFn: async () => {
@@ -61,7 +59,6 @@ export default function OneToOneDetailScreen() {
 
         const result = await openPaymentSheet();
         if (!result.success) {
-          // Payment sheet dismissed — reset the row back to available
           await invokeFunction('cancel-one-to-one', { oneToOneId: id });
           throw new Error(result.error ?? 'Payment cancelled.');
         }
@@ -94,14 +91,29 @@ export default function OneToOneDetailScreen() {
     onError: (e: Error) => Alert.alert('Cancellation failed', e.message),
   });
 
+  const confirmCashMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('one_to_ones')
+        .update({ payment_status: 'paid' })
+        .eq('id', id)
+        .eq('payment_method', 'cash');
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['one_to_ones'] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
   function confirmCancel() {
     if (!oto) return;
     const sessionStart = new Date(`${oto.session_date}T${oto.start_time}`);
     const hoursUntil = (sessionStart.getTime() - Date.now()) / (1000 * 60 * 60);
-    const withinWindow = hoursUntil > 0 && hoursUntil <= 3;
+    const withinWindow = hoursUntil > 0 && hoursUntil <= 24;
 
     const message = withinWindow
-      ? 'The session is within 3 hours. No refund will be issued.'
+      ? 'The session is within 24 hours. No refund will be issued.'
       : oto.payment_method === 'app' || !oto.payment_method
         ? 'You will receive a full refund.'
         : 'Your booking will be cancelled.';
@@ -110,6 +122,18 @@ export default function OneToOneDetailScreen() {
       { text: 'Keep booking', style: 'cancel' },
       { text: 'Cancel booking', style: 'destructive', onPress: () => cancelMutation.mutate() },
     ]);
+  }
+
+  function confirmCash() {
+    if (!oto) return;
+    Alert.alert(
+      'Confirm Cash Payment',
+      `Mark ${oto.student?.full_name} as paid in cash?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => confirmCashMutation.mutate() },
+      ],
+    );
   }
 
   if (isLoading) {
@@ -136,8 +160,29 @@ export default function OneToOneDetailScreen() {
     : oto.location?.name ?? oto.location_text ?? 'TBA';
 
   const isOwnBooking = oto.student_id === session?.user.id;
-  const isOwnSession = oto.teacher_id === session?.user.id || oto.creator_id === session?.user.id;
+  const isCreator = oto.teacher_id === session?.user.id || oto.creator_id === session?.user.id;
   const isBooked = oto.status === 'booked';
+  const isCashPending = isBooked && oto.payment_method === 'cash' && oto.payment_status === 'pending';
+
+  // Anyone who didn't create the session can book it
+  const canBook = oto.status === 'available' && !isCreator;
+
+  // Badge logic
+  let badgeLabel: string;
+  let badgeVariant: 'success' | 'info' | 'warning' | 'neutral';
+  if (isCashPending) {
+    badgeLabel = 'Cash Pending';
+    badgeVariant = 'warning';
+  } else if (oto.status === 'available') {
+    badgeLabel = 'Available';
+    badgeVariant = 'success';
+  } else if (oto.status === 'booked') {
+    badgeLabel = 'Booked';
+    badgeVariant = 'info';
+  } else {
+    badgeLabel = oto.status.charAt(0).toUpperCase() + oto.status.slice(1);
+    badgeVariant = 'neutral';
+  }
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
@@ -155,8 +200,8 @@ export default function OneToOneDetailScreen() {
           </View>
         )}
 
-        {/* Booked-by banner — teacher/admin view */}
-        {isBooked && (isOwnSession || role === 'admin') && oto.student && (
+        {/* Booked-by banner — creator view */}
+        {isBooked && isCreator && oto.student && (
           <View style={styles.studentBanner}>
             <Text style={styles.studentBannerLabel}>Booked by</Text>
             <Text style={styles.studentBannerName}>{oto.student.full_name}</Text>
@@ -167,10 +212,7 @@ export default function OneToOneDetailScreen() {
         <Card>
           <View style={styles.headerRow}>
             <Text style={styles.title}>{oto.title}</Text>
-            <Badge
-              label={oto.status.charAt(0).toUpperCase() + oto.status.slice(1)}
-              variant={oto.status === 'available' ? 'success' : oto.status === 'booked' ? 'info' : 'neutral'}
-            />
+            <Badge label={badgeLabel} variant={badgeVariant} />
           </View>
           {oto.description ? <Text style={styles.description}>{oto.description}</Text> : null}
           <View style={styles.detailsGrid}>
@@ -182,10 +224,10 @@ export default function OneToOneDetailScreen() {
           </View>
         </Card>
 
-        {/* Book button — available session, non-teacher viewing */}
-        {oto.status === 'available' && !isTeacherOrAdmin && !showPayment && (
+        {/* Book button — available session, not the creator */}
+        {canBook && !showPayment && (
           <Button variant="primary" size="lg" onPress={() => setShowPayment(true)}>
-            Book for {formatGBP(oto.price)}
+            {`Book for ${formatGBP(oto.price)}`}
           </Button>
         )}
 
@@ -210,11 +252,23 @@ export default function OneToOneDetailScreen() {
           </Card>
         )}
 
+        {/* Confirm cash button — creator view */}
+        {isCashPending && isCreator && (
+          <Button
+            variant="primary"
+            size="lg"
+            onPress={confirmCash}
+            loading={confirmCashMutation.isPending}
+          >
+            Confirm Cash Payment
+          </Button>
+        )}
+
         {/* Cancel button — student who booked */}
         {isBooked && isOwnBooking && (
           <View style={styles.cancelSection}>
             <Text style={styles.cancelPolicy}>
-              Cancel more than 3 hours before the session for a full refund. Cancellations within 3 hours are non-refundable.
+              Cancel more than 24 hours before the session for a full refund. Cancellations within 24 hours are non-refundable.
             </Text>
             <Button
               variant="secondary"
@@ -227,11 +281,11 @@ export default function OneToOneDetailScreen() {
           </View>
         )}
 
-        {/* Awaiting booking — teacher's own available session */}
-        {oto.status === 'available' && isOwnSession && (
+        {/* Awaiting booking — creator's own available session */}
+        {oto.status === 'available' && isCreator && (
           <Card>
             <Text style={styles.awaitingText}>Awaiting booking</Text>
-            <Text style={styles.awaitingSub}>This session will disappear from the available list once a student books it.</Text>
+            <Text style={styles.awaitingSub}>This session is visible to others and will disappear from the available list once someone books it.</Text>
           </Card>
         )}
 
@@ -283,8 +337,8 @@ const styles = StyleSheet.create({
   paymentTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', marginBottom: 12 },
 
   cancelSection: { gap: 10 },
-  cancelPolicy: { color: COLORS.grey[500], fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  cancelPolicy: { color: COLORS.grey[600], fontSize: 13, textAlign: 'center', lineHeight: 19 },
 
   awaitingText: { color: COLORS.grey[300], fontSize: 15, fontWeight: '600', textAlign: 'center' },
-  awaitingSub: { color: COLORS.grey[500], fontSize: 13, textAlign: 'center', marginTop: 4, lineHeight: 18 },
+  awaitingSub: { color: COLORS.grey[600], fontSize: 13, textAlign: 'center', marginTop: 4, lineHeight: 18 },
 });
