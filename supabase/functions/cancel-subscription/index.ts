@@ -1,4 +1,4 @@
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 
@@ -25,15 +25,24 @@ Deno.serve(async (req) => {
   if (!membership) return errorResponse('No active membership found.', 404);
 
   // Mark the subscription to cancel at the end of the current billing period
-  await stripe.subscriptions.update(membership.stripe_subscription_id, {
-    cancel_at_period_end: true,
-  });
+  try {
+    await stripe.subscriptions.update(membership.stripe_subscription_id, {
+      cancel_at_period_end: true,
+    });
+  } catch (stripeError) {
+    console.error('Stripe update failed:', stripeError);
+    return errorResponse('Failed to update subscription.', 500);
+  }
 
   // Set status to 'cancelling' so the UI shows it won't renew
-  await adminClient
+  const { error: updateError } = await adminClient
     .from('memberships')
     .update({ status: 'cancelling' })
     .eq('id', membership.id);
+  if (updateError) {
+    console.error('DB update failed:', updateError);
+    return errorResponse('Failed to update membership status.', 500);
+  }
 
   return jsonResponse({ success: true });
 });

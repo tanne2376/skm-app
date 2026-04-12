@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   }
 
   const session = (booking as any).class_sessions;
-  const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
+  const sessionStart = new Date(`${session.session_date}T${session.start_time}Z`);
   const hoursUntilSession = (sessionStart.getTime() - Date.now()) / (1000 * 60 * 60);
   const isPast = hoursUntilSession <= 0;
   const withinWindow = hoursUntilSession > 0 && hoursUntilSession <= CANCELLATION_WINDOW_HOURS;

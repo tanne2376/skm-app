@@ -13,7 +13,7 @@ export default function MyClassesScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
 
-  const { data: sessions, isLoading, refetch } = useQuery<ClassSessionWithDetails[]>({
+  const { data: sessions, isLoading, isFetching, refetch } = useQuery<ClassSessionWithDetails[]>({
     queryKey: ['my_classes', session?.user.id],
     enabled: !!session,
     queryFn: async () => {
@@ -51,7 +51,7 @@ export default function MyClassesScreen() {
         data={sessions ?? []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
+        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => router.push(`/(app)/my-classes/${item.id}`)} activeOpacity={0.8}>
             <Card>

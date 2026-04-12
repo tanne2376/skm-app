@@ -14,7 +14,7 @@ export default function TimetableScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
-  const { data: templates, isLoading, refetch } = useQuery<ClassTemplate[]>({
+  const { data: templates, isLoading, isFetching, refetch } = useQuery<ClassTemplate[]>({
     queryKey: ['class_templates'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -72,7 +72,7 @@ export default function TimetableScreen() {
         data={days}
         keyExtractor={(d) => String(d)}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
+        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
         renderItem={({ item: day }) => (
           <View style={styles.daySection}>
             <Text style={styles.dayHeading}>{DAY_NAMES[day]}</Text>

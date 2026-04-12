@@ -9,6 +9,7 @@ import {
   Modal,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,7 +33,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { role, session: authSession } = useAuth();
   const isAdmin = role === 'admin';
-  const { data: allSessions, isLoading, refetch } = useUpcomingSessions();
+  const { data: allSessions, isLoading, isFetching, refetch } = useUpcomingSessions();
 
   // Teachers don't see classes they're assigned to teach (those are in My Classes)
   const sessions = allSessions?.filter(
@@ -85,7 +86,7 @@ export default function HomeScreen() {
   function handleCancel(session: ClassSessionWithDetails) {
     if (!session.user_booking) return;
 
-    const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
+    const sessionStart = new Date(`${session.session_date}T${session.start_time}Z`);
     const hoursUntil = (sessionStart.getTime() - Date.now()) / (1000 * 60 * 60);
     const noRefund = hoursUntil <= 3;
 
@@ -125,7 +126,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
+            refreshing={isFetching}
             onRefresh={refetch}
             tintColor={COLORS.accent}
             colors={[COLORS.accent]}
@@ -183,10 +184,12 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   const queryClient = useQueryClient();
   const [showTimeEditor, setShowTimeEditor] = useState(false);
   const [showRoster, setShowRoster] = useState(false);
+  const [showCancelInput, setShowCancelInput] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const [editStart, setEditStart] = useState(session.start_time.slice(0, 5));
   const [editEnd, setEditEnd] = useState(session.end_time.slice(0, 5));
 
-  const dateStr = new Date(session.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
+  const dateStr = new Date(session.session_date + 'T00:00:00Z').toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short',
   });
   const spotsLeft = session.effective_capacity - session.confirmed_count;
@@ -251,20 +254,30 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   });
 
   function handleCancelSession() {
-    Alert.prompt(
-      'Cancel Session',
-      'Enter a reason (shown to students):',
-      [
-        { text: 'Back', style: 'cancel' },
-        {
-          text: 'Cancel Session',
-          style: 'destructive',
-          onPress: (reason?: string) => cancelSession.mutate(reason ?? 'Session cancelled'),
-        },
-      ],
-      'plain-text',
-      '',
-    );
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Cancel Session',
+        'Enter a reason (shown to students):',
+        [
+          { text: 'Back', style: 'cancel' },
+          {
+            text: 'Cancel Session',
+            style: 'destructive',
+            onPress: (reason?: string) => cancelSession.mutate(reason ?? 'Session cancelled'),
+          },
+        ],
+        'plain-text',
+        '',
+      );
+    } else {
+      setCancelReason('');
+      setShowCancelInput(true);
+    }
+  }
+
+  function confirmCancelSession() {
+    cancelSession.mutate(cancelReason.trim() || 'Session cancelled');
+    setShowCancelInput(false);
   }
 
   return (
@@ -403,6 +416,36 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           >
             Save
           </Button>
+        </View>
+      </SlideUpModal>
+
+      {/* Cancel session reason modal */}
+      <SlideUpModal visible={showCancelInput} onDismiss={() => setShowCancelInput(false)}>
+        <View style={styles.timeSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.timeSheetTitle}>Cancel Session</Text>
+          <Text style={styles.timeSheetSubtitle}>Enter a reason (shown to students):</Text>
+          <TextInput
+            style={styles.timeInput}
+            value={cancelReason}
+            onChangeText={setCancelReason}
+            placeholder="Session cancelled"
+            placeholderTextColor={COLORS.grey[600]}
+            autoFocus
+          />
+          <View style={[styles.adminActions, { marginTop: 16 }]}>
+            <Button variant="secondary" size="md" onPress={() => setShowCancelInput(false)}>
+              Back
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              onPress={confirmCancelSession}
+              loading={cancelSession.isPending}
+            >
+              Cancel Session
+            </Button>
+          </View>
         </View>
       </SlideUpModal>
     </Card>

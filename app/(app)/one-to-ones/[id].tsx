@@ -39,11 +39,14 @@ export default function OneToOneDetailScreen() {
   const bookMutation = useMutation({
     mutationFn: async (method: PaymentMethod) => {
       if (method === 'cash') {
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from('one_to_ones')
           .update({ student_id: session!.user.id, status: 'booked', payment_method: 'cash', payment_status: 'pending' })
-          .eq('id', id);
+          .eq('id', id)
+          .eq('status', 'available')
+          .select();
         if (error) throw error;
+        if (!updated?.length) throw new Error('This session is no longer available.');
       } else {
         const { data, error } = await invokeFunction<{
           clientSecret: string; ephemeralKeySecret: string; customerId: string;
@@ -59,7 +62,11 @@ export default function OneToOneDetailScreen() {
 
         const result = await openPaymentSheet();
         if (!result.success) {
-          await invokeFunction('cancel-one-to-one', { oneToOneId: id });
+          try {
+            await invokeFunction('cancel-one-to-one', { oneToOneId: id });
+          } catch (cleanupError) {
+            console.error('Failed to cleanup after payment failure:', cleanupError);
+          }
           throw new Error(result.error ?? 'Payment cancelled.');
         }
       }
@@ -108,7 +115,7 @@ export default function OneToOneDetailScreen() {
 
   function confirmCancel() {
     if (!oto) return;
-    const sessionStart = new Date(`${oto.session_date}T${oto.start_time}`);
+    const sessionStart = new Date(`${oto.session_date}T${oto.start_time}Z`);
     const hoursUntil = (sessionStart.getTime() - Date.now()) / (1000 * 60 * 60);
     const withinWindow = hoursUntil > 0 && hoursUntil <= 24;
 
@@ -152,7 +159,7 @@ export default function OneToOneDetailScreen() {
     );
   }
 
-  const dateStr = new Date(oto.session_date).toLocaleDateString('en-GB', {
+  const dateStr = new Date(oto.session_date + 'T12:00:00Z').toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
   const locationStr = oto.location?.address
