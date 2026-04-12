@@ -1,6 +1,7 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { membershipWeekStart } from '../_shared/membershipWeek.ts';
 
 const CANCELLATION_WINDOW_HOURS = 3;
 
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
   // week can be converted to free — the 2/week allowance is count-based, not
   // pinned to specific sessions.
   if (booking.payment_method === 'membership' && !withinWindow && !isPast) {
-    const { data: weekStart } = await adminClient.rpc('iso_week_start', { p_date: session.session_date });
+    const weekStart = membershipWeekStart(session.session_date, session.start_time);
 
     // Get the student's active membership
     const { data: membership } = await adminClient
@@ -150,36 +151,40 @@ Deno.serve(async (req) => {
         }
 
         if (convertTarget) {
-          // Refund the Stripe payment
+          // Refund the Stripe payment — only convert if refund succeeds
+          let refundIssued = false;
           try {
             await stripe.refunds.create({
               payment_intent: convertTarget.stripe_payment_intent_id!,
               reason: 'requested_by_customer',
             });
+            refundIssued = true;
           } catch (e) {
             console.error('Stripe refund for membership conversion failed:', e);
           }
 
-          // Convert booking to membership
-          await adminClient
-            .from('bookings')
-            .update({ payment_method: 'membership', payment_status: 'paid', stripe_payment_intent_id: null })
-            .eq('id', convertTarget.id);
+          if (refundIssued) {
+            // Convert booking to membership
+            await adminClient
+              .from('bookings')
+              .update({ payment_method: 'membership', payment_status: 'paid', stripe_payment_intent_id: null })
+              .eq('id', convertTarget.id);
 
-          // Record the usage row
-          const { data: convertSession } = await adminClient
-            .from('class_sessions')
-            .select('session_date')
-            .eq('id', convertTarget.session_id)
-            .single();
-          if (convertSession) {
-            const { data: convertWeekStart } = await adminClient.rpc('iso_week_start', { p_date: convertSession.session_date });
-            await adminClient.from('membership_weekly_usage').insert({
-              membership_id: membership.id,
-              student_id: booking.student_id,
-              booking_id: convertTarget.id,
-              week_start: convertWeekStart,
-            });
+            // Record the usage row
+            const { data: convertSession } = await adminClient
+              .from('class_sessions')
+              .select('session_date, start_time')
+              .eq('id', convertTarget.session_id)
+              .single();
+            if (convertSession) {
+              const convertWeekStart = membershipWeekStart(convertSession.session_date, convertSession.start_time);
+              await adminClient.from('membership_weekly_usage').insert({
+                membership_id: membership.id,
+                student_id: booking.student_id,
+                booking_id: convertTarget.id,
+                week_start: convertWeekStart,
+              });
+            }
           }
         }
       }

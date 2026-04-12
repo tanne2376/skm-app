@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { ClassSessionWithDetails } from '@/types';
+import { membershipWeekRange } from '@/lib/membershipWeek';
 import { useAuth } from './useAuth';
 
 export function useClassSessions(from: Date, to: Date) {
@@ -66,15 +67,6 @@ export function useClassSessions(from: Date, to: Date) {
 }
 
 export function useUpcomingSessions() {
-  const now = new Date();
-
-  // Show sessions until the end of the current membership week (Sunday).
-  // After Sunday 12:00 the week flips — show next Mon–Sun instead.
-  const isSundayAfterNoon = now.getDay() === 0 && now.getHours() >= 12;
-  const daysUntilSunday = now.getDay() === 0 ? 0 : 7 - now.getDay();
-  const end = new Date(now);
-  end.setDate(end.getDate() + daysUntilSunday + (isSundayAfterNoon ? 7 : 0));
-  end.setHours(23, 59, 59, 999);
-
-  return useClassSessions(now, end);
+  const { from, to } = membershipWeekRange();
+  return useClassSessions(new Date(from + 'T00:00:00'), new Date(to + 'T23:59:59'));
 }

@@ -1,45 +1,57 @@
 /**
- * Tests for useActiveMembership — specifically the ISO week start calculation
- * and quota logic. Supabase calls are mocked.
+ * Tests for membershipWeekStart — the pure utility that determines
+ * which Monday starts the current membership week.
+ * Membership weeks run Mon 00:00 → Sun 12:00.
  */
 
-// Extract the pure utility function from the hook module for isolated testing
-function isoWeekStart(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay(); // 0=Sun
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  return d.toISOString().split('T')[0];
-}
+import { membershipWeekStart, membershipWeekRange } from '@/lib/membershipWeek';
 
-describe('isoWeekStart', () => {
+describe('membershipWeekStart', () => {
   it('returns the Monday for a Monday input', () => {
-    // 2026-03-30 is a Monday
     const monday = new Date('2026-03-30T10:00:00Z');
-    expect(isoWeekStart(monday)).toBe('2026-03-30');
+    expect(membershipWeekStart(monday)).toBe('2026-03-30');
   });
 
   it('returns the Monday for a Wednesday input', () => {
-    // 2026-04-01 is a Wednesday
     const wednesday = new Date('2026-04-01T10:00:00Z');
-    expect(isoWeekStart(wednesday)).toBe('2026-03-30');
+    expect(membershipWeekStart(wednesday)).toBe('2026-03-30');
   });
 
-  it('returns the Monday for a Sunday input', () => {
-    // 2026-04-05 is a Sunday — should give the previous Monday 2026-03-30
-    const sunday = new Date('2026-04-05T10:00:00Z');
-    expect(isoWeekStart(sunday)).toBe('2026-03-30');
+  it('returns the same Monday for Sunday before noon', () => {
+    const sundayMorning = new Date('2026-04-05T10:00:00Z');
+    expect(membershipWeekStart(sundayMorning)).toBe('2026-03-30');
+  });
+
+  it('returns next Monday for Sunday at noon or after', () => {
+    const sundayNoon = new Date('2026-04-05T12:00:00Z');
+    expect(membershipWeekStart(sundayNoon)).toBe('2026-04-06');
+  });
+
+  it('returns next Monday for Sunday evening', () => {
+    const sundayEvening = new Date('2026-04-05T20:00:00Z');
+    expect(membershipWeekStart(sundayEvening)).toBe('2026-04-06');
   });
 
   it('returns the Monday for a Saturday input', () => {
-    // 2026-04-04 is a Saturday
     const saturday = new Date('2026-04-04T10:00:00Z');
-    expect(isoWeekStart(saturday)).toBe('2026-03-30');
+    expect(membershipWeekStart(saturday)).toBe('2026-03-30');
   });
 
   it('returns next Monday for a Monday in the next week', () => {
     const nextMonday = new Date('2026-04-06T10:00:00Z');
-    expect(isoWeekStart(nextMonday)).toBe('2026-04-06');
+    expect(membershipWeekStart(nextMonday)).toBe('2026-04-06');
+  });
+});
+
+describe('membershipWeekRange', () => {
+  it('returns Mon–Sun range', () => {
+    const wednesday = new Date('2026-04-01T10:00:00Z');
+    expect(membershipWeekRange(wednesday)).toEqual({ from: '2026-03-30', to: '2026-04-05' });
+  });
+
+  it('flips to next week on Sunday after noon', () => {
+    const sundayAfternoon = new Date('2026-04-05T14:00:00Z');
+    expect(membershipWeekRange(sundayAfternoon)).toEqual({ from: '2026-04-06', to: '2026-04-12' });
   });
 });
 

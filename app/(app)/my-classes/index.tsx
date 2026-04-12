@@ -7,6 +7,7 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { membershipWeekRange } from '@/lib/membershipWeek';
 import { ClassSessionWithDetails } from '@/types';
 
 export default function MyClassesScreen() {
@@ -17,14 +18,7 @@ export default function MyClassesScreen() {
     queryKey: ['my_classes', session?.user.id],
     enabled: !!session,
     queryFn: async () => {
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      // Show until end of membership week (Sunday). After Sunday noon, flip to next week.
-      const isSundayAfterNoon = now.getDay() === 0 && now.getHours() >= 12;
-      const daysUntilSunday = now.getDay() === 0 ? 0 : 7 - now.getDay();
-      const endDate = new Date(now);
-      endDate.setDate(endDate.getDate() + daysUntilSunday + (isSundayAfterNoon ? 7 : 0));
-      const weekEnd = endDate.toISOString().split('T')[0];
+      const { from: weekFrom, to: weekTo } = membershipWeekRange();
       const { data, error } = await supabase
         .from('class_sessions')
         .select(`
@@ -33,8 +27,8 @@ export default function MyClassesScreen() {
           bookings (id, student_id, status, payment_method, payment_status)
         `)
         .eq('teacher_id', session!.user.id)
-        .gte('session_date', today)
-        .lte('session_date', weekEnd)
+        .gte('session_date', weekFrom)
+        .lte('session_date', weekTo)
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
