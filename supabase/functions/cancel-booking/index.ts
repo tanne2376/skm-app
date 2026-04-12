@@ -71,11 +71,19 @@ Deno.serve(async (req) => {
       newPaymentStatus = 'no_refund';
     }
   } else if (booking.payment_method === 'membership') {
-    // Release weekly usage slot so it can be used for another class
-    await adminClient
-      .from('membership_weekly_usage')
-      .delete()
-      .eq('booking_id', bookingId);
+    if (withinWindow) {
+      // Late cancel — burn the slot (counts toward weekly quota but session is gone)
+      await adminClient
+        .from('membership_weekly_usage')
+        .update({ is_burned: true })
+        .eq('booking_id', bookingId);
+    } else {
+      // >3hrs — release the slot
+      await adminClient
+        .from('membership_weekly_usage')
+        .delete()
+        .eq('booking_id', bookingId);
+    }
   }
 
   // Cancel the booking
@@ -87,6 +95,96 @@ Deno.serve(async (req) => {
       cancelled_at: new Date().toISOString(),
     })
     .eq('id', bookingId);
+
+  // If a membership slot was freed (>3hrs), check if a paid booking in the same
+  // week can be converted to free — the 2/week allowance is count-based, not
+  // pinned to specific sessions.
+  if (booking.payment_method === 'membership' && !withinWindow && !isPast) {
+    const { data: weekStart } = await adminClient.rpc('iso_week_start', { p_date: session.session_date });
+
+    // Get the student's active membership
+    const { data: membership } = await adminClient
+      .from('memberships')
+      .select('id, tier')
+      .eq('student_id', booking.student_id)
+      .in('status', ['active', 'cancelling'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (membership && membership.tier === 'two_per_week') {
+      // Count remaining usage rows (burned + active) for this week
+      const { count: usageCount } = await adminClient
+        .from('membership_weekly_usage')
+        .select('id', { count: 'exact', head: true })
+        .eq('membership_id', membership.id)
+        .eq('week_start', weekStart);
+
+      if ((usageCount ?? 0) < 2) {
+        // There's a free slot — find an active paid booking in the same ISO week
+        const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000)
+          .toISOString().split('T')[0];
+
+        const { data: paidBooking } = await adminClient
+          .from('bookings')
+          .select('id, stripe_payment_intent_id, session_id, payment_method')
+          .eq('student_id', booking.student_id)
+          .eq('status', 'confirmed')
+          .eq('payment_method', 'app')
+          .not('stripe_payment_intent_id', 'is', null)
+          .order('booked_at', { ascending: true })
+          .limit(10);
+
+        // Filter to bookings whose session falls in the same ISO week
+        let convertTarget = null;
+        for (const pb of paidBooking ?? []) {
+          const { data: pbSession } = await adminClient
+            .from('class_sessions')
+            .select('session_date')
+            .eq('id', pb.session_id)
+            .single();
+          if (pbSession && pbSession.session_date >= weekStart && pbSession.session_date <= weekEnd) {
+            convertTarget = pb;
+            break;
+          }
+        }
+
+        if (convertTarget) {
+          // Refund the Stripe payment
+          try {
+            await stripe.refunds.create({
+              payment_intent: convertTarget.stripe_payment_intent_id!,
+              reason: 'requested_by_customer',
+            });
+          } catch (e) {
+            console.error('Stripe refund for membership conversion failed:', e);
+          }
+
+          // Convert booking to membership
+          await adminClient
+            .from('bookings')
+            .update({ payment_method: 'membership', payment_status: 'paid', stripe_payment_intent_id: null })
+            .eq('id', convertTarget.id);
+
+          // Record the usage row
+          const { data: convertSession } = await adminClient
+            .from('class_sessions')
+            .select('session_date')
+            .eq('id', convertTarget.session_id)
+            .single();
+          if (convertSession) {
+            const { data: convertWeekStart } = await adminClient.rpc('iso_week_start', { p_date: convertSession.session_date });
+            await adminClient.from('membership_weekly_usage').insert({
+              membership_id: membership.id,
+              student_id: booking.student_id,
+              booking_id: convertTarget.id,
+              week_start: convertWeekStart,
+            });
+          }
+        }
+      }
+    }
+  }
 
   // Promote next person on the waitlist
   const { error: promoteError } = await adminClient.functions.invoke('promote-waitlist', {

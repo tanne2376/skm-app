@@ -3,9 +3,15 @@ import { supabase } from '@/lib/supabase';
 import { MembershipWithUsage } from '@/types';
 import { useAuth } from './useAuth';
 
-/** Returns the Monday of the ISO week for a given date */
-function isoWeekStart(date: Date): string {
+/** Returns the Monday of the membership week for a given date.
+ *  Membership weeks run Monday 00:00 → Sunday 12:00.
+ *  After Sunday noon the week flips to the next Monday. */
+export function isoWeekStart(date: Date): string {
   const d = new Date(date);
+  // Sunday after noon belongs to the next week
+  if (d.getDay() === 0 && d.getHours() >= 12) {
+    d.setDate(d.getDate() + 1); // push to Monday
+  }
   const day = d.getDay(); // 0=Sun
   const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust to Monday
   d.setDate(diff);

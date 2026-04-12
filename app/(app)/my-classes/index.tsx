@@ -19,7 +19,12 @@ export default function MyClassesScreen() {
     queryFn: async () => {
       const now = new Date();
       const today = now.toISOString().split('T')[0];
-      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      // Show until end of membership week (Sunday). After Sunday noon, flip to next week.
+      const isSundayAfterNoon = now.getDay() === 0 && now.getHours() >= 12;
+      const daysUntilSunday = now.getDay() === 0 ? 0 : 7 - now.getDay();
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + daysUntilSunday + (isSundayAfterNoon ? 7 : 0));
+      const weekEnd = endDate.toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('class_sessions')
         .select(`
@@ -29,7 +34,7 @@ export default function MyClassesScreen() {
         `)
         .eq('teacher_id', session!.user.id)
         .gte('session_date', today)
-        .lte('session_date', tomorrow)
+        .lte('session_date', weekEnd)
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;

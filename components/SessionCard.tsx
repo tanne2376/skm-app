@@ -12,9 +12,10 @@ interface SessionCardProps {
   onCancel: () => void;
   isMutating?: boolean;
   isAdmin?: boolean;
+  freeWithMembership?: boolean;
 }
 
-export function SessionCard({ session, onBook, onCancel, isMutating = false, isAdmin = false }: SessionCardProps) {
+export function SessionCard({ session, onBook, onCancel, isMutating = false, isAdmin = false, freeWithMembership = false }: SessionCardProps) {
   const now = new Date();
   const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
   const isPast = sessionStart < now;
@@ -53,7 +54,9 @@ export function SessionCard({ session, onBook, onCancel, isMutating = false, isA
         <View style={styles.flex}>
           <Text style={styles.className}>{session.class_templates.name}</Text>
           <Text style={styles.meta}>{dateStr} · {timeStr} · {teacherName}</Text>
-          <Text style={styles.price}>{formatGBP(session.effective_price)}</Text>
+          <Text style={[styles.price, freeWithMembership && styles.priceFree]}>
+            {freeWithMembership ? 'Free with membership' : formatGBP(session.effective_price)}
+          </Text>
         </View>
         <View style={styles.rightColumn}>
           {isAdmin && !isPast && (
@@ -165,6 +168,7 @@ const styles = StyleSheet.create({
   className: { color: COLORS.white, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   meta: { color: COLORS.grey[400], fontSize: 13, marginBottom: 2 },
   price: { color: COLORS.grey[400], fontSize: 13 },
+  priceFree: { color: COLORS.success },
   spots: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
   spotsFull: { color: COLORS.accent },
   waitlistPosition: { color: COLORS.warning, fontSize: 13, flex: 1 },
