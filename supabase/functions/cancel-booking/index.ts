@@ -122,10 +122,7 @@ Deno.serve(async (req) => {
         .eq('week_start', weekStart);
 
       if ((usageCount ?? 0) < 2) {
-        // There's a free slot — find an active paid booking in the same ISO week
-        const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000)
-          .toISOString().split('T')[0];
-
+        // There's a free slot — find an active paid booking in the same membership week
         const { data: paidBooking } = await adminClient
           .from('bookings')
           .select('id, stripe_payment_intent_id, session_id, payment_method')
@@ -136,15 +133,15 @@ Deno.serve(async (req) => {
           .order('booked_at', { ascending: true })
           .limit(10);
 
-        // Filter to bookings whose session falls in the same ISO week
+        // Filter to bookings whose session falls in the same membership week
         let convertTarget = null;
         for (const pb of paidBooking ?? []) {
           const { data: pbSession } = await adminClient
             .from('class_sessions')
-            .select('session_date')
+            .select('session_date, start_time')
             .eq('id', pb.session_id)
             .single();
-          if (pbSession && pbSession.session_date >= weekStart && pbSession.session_date <= weekEnd) {
+          if (pbSession && membershipWeekStart(pbSession.session_date, pbSession.start_time) === weekStart) {
             convertTarget = pb;
             break;
           }

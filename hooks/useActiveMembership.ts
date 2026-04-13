@@ -26,12 +26,11 @@ export function useActiveMembership() {
 
       let weeklyUsageCount = 0;
       if (membership.tier === 'two_per_week') {
-        const ws = membershipWeekStart();
         const { count, error: usageError } = await supabase
           .from('membership_weekly_usage')
           .select('id', { count: 'exact', head: true })
           .eq('membership_id', membership.id)
-          .eq('week_start', ws);
+          .eq('week_start', weekStart);
         if (usageError) throw usageError;
         weeklyUsageCount = count ?? 0;
       }

@@ -13,12 +13,12 @@ import { ClassSessionWithDetails } from '@/types';
 export default function MyClassesScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { from: weekFrom, to: weekTo } = membershipWeekRange();
 
   const { data: sessions, isLoading, isFetching, refetch } = useQuery<ClassSessionWithDetails[]>({
-    queryKey: ['my_classes', session?.user.id],
+    queryKey: ['my_classes', session?.user.id, weekFrom, weekTo],
     enabled: !!session,
     queryFn: async () => {
-      const { from: weekFrom, to: weekTo } = membershipWeekRange();
       const { data, error } = await supabase
         .from('class_sessions')
         .select(`
