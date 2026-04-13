@@ -1,6 +1,7 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { membershipWeekStart } from '../_shared/membershipWeek.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -53,14 +54,10 @@ Deno.serve(async (req) => {
       if (membership.tier === 'unlimited') {
         // Free promotion
         await promoteBooking(adminClient, booking.id, 'membership', 'paid');
-
-        // Record weekly usage
-        const { data: weekStart } = await adminClient.rpc('iso_week_start', { p_date: session.session_date });
-        // Only insert usage for two_per_week (unlimited doesn't need tracking)
         promoted = true;
       } else {
         // two_per_week — check quota
-        const { data: weekStart } = await adminClient.rpc('iso_week_start', { p_date: session.session_date });
+        const weekStart = membershipWeekStart(session.session_date, session.start_time);
         const { count } = await adminClient
           .from('membership_weekly_usage')
           .select('id', { count: 'exact', head: true })

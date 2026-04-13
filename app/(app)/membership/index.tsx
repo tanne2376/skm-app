@@ -148,11 +148,9 @@ export default function MembershipScreen() {
             <TierCard
               title="Unlimited"
               price={MEMBERSHIP_PRICES_PENCE.unlimited}
-              highlighted
               perks={[
                 'Unlimited classes per week',
                 'Any class in the timetable',
-                'Priority booking',
                 'Cancel anytime',
               ]}
               onPress={() => handleSubscribe('unlimited')}

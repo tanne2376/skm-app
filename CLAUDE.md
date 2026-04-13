@@ -47,6 +47,9 @@ Supabase secrets (set via `npx supabase secrets set ... --project-ref amvajuqaxv
 - **Webhook events:** `payment_intent.succeeded`, `payment_intent.payment_failed`, `invoice.payment_succeeded`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`
 - **Products:** SKM 2x Per Week (£80/mo) · SKM Unlimited (£100/mo)
 
+## Timezone
+All users, teachers, and admins are in the **UK timezone**. Do not add UTC-conversion logic or `getUTC*` Date methods — local-time `Date` APIs are intentional. Supabase Edge Functions run in UTC but session times are stored as naive time-of-day strings (no offset), so the same parsing works in both contexts for all practical purposes.
+
 ## Key business rules
 - Class price: £15 default (configurable per template/session override)
 - Memberships: £80/mo (2x/week) or £100/mo (unlimited), Stripe auto-renewing

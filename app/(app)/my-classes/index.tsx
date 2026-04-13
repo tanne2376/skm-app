@@ -7,19 +7,18 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { membershipWeekRange } from '@/lib/membershipWeek';
 import { ClassSessionWithDetails } from '@/types';
 
 export default function MyClassesScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { from: weekFrom, to: weekTo } = membershipWeekRange();
 
   const { data: sessions, isLoading, isFetching, refetch } = useQuery<ClassSessionWithDetails[]>({
-    queryKey: ['my_classes', session?.user.id],
+    queryKey: ['my_classes', session?.user.id, weekFrom, weekTo],
     enabled: !!session,
     queryFn: async () => {
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('class_sessions')
         .select(`
@@ -28,8 +27,8 @@ export default function MyClassesScreen() {
           bookings (id, student_id, status, payment_method, payment_status)
         `)
         .eq('teacher_id', session!.user.id)
-        .gte('session_date', today)
-        .lte('session_date', tomorrow)
+        .gte('session_date', weekFrom)
+        .lte('session_date', weekTo)
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;

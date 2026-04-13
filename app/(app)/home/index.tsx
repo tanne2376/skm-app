@@ -141,6 +141,7 @@ export default function HomeScreen() {
               onBook={() => handleBookPress(item)}
               onCancel={() => handleCancel(item)}
               isMutating={isMutating}
+              freeWithMembership={canUseMembership}
             />
           )
         }

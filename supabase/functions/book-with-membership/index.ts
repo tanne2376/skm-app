@@ -1,5 +1,6 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
+import { membershipWeekStart } from '../_shared/membershipWeek.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -30,15 +31,15 @@ Deno.serve(async (req) => {
 
   // Check 2x/week quota
   if (membership.tier === 'two_per_week') {
-    // Get session date to compute ISO week start
+    // Get session date to compute membership week start
     const { data: session } = await adminClient
       .from('class_sessions')
-      .select('session_date')
+      .select('session_date, start_time')
       .eq('id', session_id)
       .single();
     if (!session) return errorResponse('Session not found', 404);
 
-    const { data: weekStart } = await adminClient.rpc('iso_week_start', { p_date: session.session_date });
+    const weekStart = membershipWeekStart(session.session_date, session.start_time);
 
     const { count } = await adminClient
       .from('membership_weekly_usage')
@@ -70,14 +71,14 @@ Deno.serve(async (req) => {
   }
 
   // Record weekly usage
-  const { data: session } = await adminClient
+  const { data: sessionForUsage } = await adminClient
     .from('class_sessions')
-    .select('session_date')
+    .select('session_date, start_time')
     .eq('id', session_id)
     .single();
 
-  if (session && membership.tier === 'two_per_week') {
-    const { data: weekStart } = await adminClient.rpc('iso_week_start', { p_date: session.session_date });
+  if (sessionForUsage && membership.tier === 'two_per_week') {
+    const weekStart = membershipWeekStart(sessionForUsage.session_date, sessionForUsage.start_time);
     await adminClient.from('membership_weekly_usage').insert({
       membership_id,
       student_id: user.id,

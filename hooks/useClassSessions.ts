@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { ClassSessionWithDetails } from '@/types';
+import { membershipWeekRange } from '@/lib/membershipWeek';
 import { useAuth } from './useAuth';
 
 export function useClassSessions(from: Date, to: Date) {
@@ -45,7 +46,9 @@ export function useClassSessions(from: Date, to: Date) {
 
       return (data ?? []).map((s: any) => {
         const allBookings = s.bookings ?? [];
-        const userBooking = allBookings.find((b: any) => b.student_id === userId);
+        const userBooking = allBookings.find(
+          (b: any) => b.student_id === userId && b.status !== 'cancelled',
+        );
         const stat = statsMap.get(s.id);
         const effectiveCapacity = s.capacity ?? s.class_templates?.capacity ?? 20;
         const effectivePrice = s.price ?? s.class_templates?.price ?? 1500;
@@ -64,7 +67,6 @@ export function useClassSessions(from: Date, to: Date) {
 }
 
 export function useUpcomingSessions() {
-  const now = new Date();
-  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  return useClassSessions(now, in24h);
+  const { from, to } = membershipWeekRange();
+  return useClassSessions(new Date(from + 'T00:00:00'), new Date(to + 'T23:59:59'));
 }
