@@ -6,7 +6,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import * as Linking from 'expo-linking';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,7 +39,30 @@ function AuthGuard() {
   return null;
 }
 
+/** Extract Supabase auth tokens from a deep link URL and set the session. */
+function handleAuthDeepLink(url: string) {
+  // Supabase sends tokens in the URL fragment: skm://#access_token=...&refresh_token=...
+  const hash = url.split('#')[1];
+  if (!hash) return;
+  const params = new URLSearchParams(hash);
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  if (accessToken && refreshToken) {
+    supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  }
+}
+
 export default function RootLayout() {
+  useEffect(() => {
+    // Handle deep link that opened the app (cold start)
+    Linking.getInitialURL().then((url) => {
+      if (url) handleAuthDeepLink(url);
+    });
+    // Handle deep link while app is already open (warm start)
+    const sub = Linking.addEventListener('url', ({ url }) => handleAuthDeepLink(url));
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(() => {
       // Deep link handling is done via notification data
