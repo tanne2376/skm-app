@@ -48,20 +48,27 @@ function AuthGuard() {
 
 /** Extract Supabase auth tokens from a deep link URL and set the session. */
 async function handleAuthDeepLink(url: string) {
-  // Supabase sends tokens in the URL fragment: skm://#access_token=...&refresh_token=...
+  // Only process links intended for our app's auth flows
+  if (!url.startsWith('skm://')) return;
+
+  // Supabase sends tokens in the URL fragment: skm://...#access_token=...&type=recovery
   const hash = url.split('#')[1];
   if (!hash) return;
   const params = new URLSearchParams(hash);
   const accessToken = params.get('access_token');
   const refreshToken = params.get('refresh_token');
-  if (accessToken && refreshToken) {
-    const { error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    if (error) {
-      console.error('Failed to set session from deep link:', error.message);
-    }
+  const type = params.get('type');
+  if (!accessToken || !refreshToken) return;
+
+  // Only accept known auth flow types
+  if (type !== 'recovery' && type !== 'signup') return;
+
+  const { error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+  if (error) {
+    console.error('Failed to set session from deep link:', error.message);
   }
 }
 

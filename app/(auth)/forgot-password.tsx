@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { router } from 'expo-router';
+import { Link } from 'expo-router';
 import { COLORS } from '@/constants';
 import { supabase } from '@/lib/supabase';
 
@@ -46,9 +46,11 @@ export default function ForgotPasswordScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.inner}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        <Link href="/(auth)/login" asChild>
+          <TouchableOpacity style={styles.backButton}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+        </Link>
 
         <Text style={styles.title}>Forgot Password</Text>
         <Text style={styles.subtitle}>
@@ -84,12 +86,11 @@ export default function ForgotPasswordScreen() {
             </TouchableOpacity>
           </>
         ) : (
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.buttonText}>Back to Sign In</Text>
-          </TouchableOpacity>
+          <Link href="/(auth)/login" asChild>
+            <TouchableOpacity style={styles.button}>
+              <Text style={styles.buttonText}>Back to Sign In</Text>
+            </TouchableOpacity>
+          </Link>
         )}
       </View>
     </KeyboardAvoidingView>

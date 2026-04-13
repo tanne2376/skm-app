@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { router } from 'expo-router';
 import { COLORS } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -40,9 +39,7 @@ export default function ResetPasswordScreen() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
       clearPasswordRecovery();
-      Alert.alert('Success', 'Password updated. You are now signed in.', [
-        { text: 'OK', onPress: () => router.replace('/(app)/home') },
-      ]);
+      Alert.alert('Success', 'Password updated. You are now signed in.');
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'An unexpected error occurred.');
     } finally {
