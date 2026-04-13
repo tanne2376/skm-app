@@ -21,8 +21,8 @@ export default function ChangePasswordScreen() {
       Alert.alert('Error', 'Please fill in all fields.');
       return;
     }
-    if (newPassword.length < 6) {
-      Alert.alert('Error', 'New password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      Alert.alert('Error', 'New password must be at least 8 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -51,8 +51,8 @@ export default function ChangePasswordScreen() {
       Alert.alert('Success', 'Password updated.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
@@ -71,6 +71,7 @@ export default function ChangePasswordScreen() {
             onChangeText={setOldPassword}
             secureTextEntry
             autoComplete="current-password"
+            textContentType="password"
             placeholderTextColor={COLORS.grey[600]}
           />
 
@@ -81,6 +82,7 @@ export default function ChangePasswordScreen() {
             onChangeText={setNewPassword}
             secureTextEntry
             autoComplete="new-password"
+            textContentType="newPassword"
             placeholderTextColor={COLORS.grey[600]}
           />
 
@@ -91,6 +93,7 @@ export default function ChangePasswordScreen() {
             onChangeText={setConfirmPassword}
             secureTextEntry
             autoComplete="new-password"
+            textContentType="newPassword"
             placeholderTextColor={COLORS.grey[600]}
           />
 
