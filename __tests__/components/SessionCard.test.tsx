@@ -43,10 +43,9 @@ describe('SessionCard', () => {
     expect(screen.getByText(/18:30/)).toBeTruthy();
   });
 
-  it('shows available spots and Pay button when not booked', () => {
+  it('shows Book button when not booked and spots available', () => {
     render(<SessionCard session={base} onBook={noop} onCancel={noop} />);
-    expect(screen.getByText(/spots/i)).toBeTruthy();
-    expect(screen.getByText(/Pay £15/i)).toBeTruthy();
+    expect(screen.getByText('Book')).toBeTruthy();
   });
 
   it('shows Confirmed badge when user has confirmed booking', () => {
@@ -98,7 +97,7 @@ describe('SessionCard', () => {
     };
     render(<SessionCard session={full} onBook={noop} onCancel={noop} />);
     expect(screen.getByText('Full')).toBeTruthy();
-    expect(screen.getByText(/Join Waitlist/i)).toBeTruthy();
+    expect(screen.getByText(/Add to Waitlist/i)).toBeTruthy();
   });
 
   it('shows Cancelled badge when session is cancelled', () => {
@@ -154,7 +153,7 @@ describe('SessionCard', () => {
   it('calls onBook when Pay button is pressed', () => {
     const onBook = jest.fn();
     render(<SessionCard session={base} onBook={onBook} onCancel={noop} />);
-    fireEvent.press(screen.getByText(/Pay £15/i));
+    fireEvent.press(screen.getByText('Book'));
     expect(onBook).toHaveBeenCalledTimes(1);
   });
 });
