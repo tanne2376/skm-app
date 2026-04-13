@@ -127,6 +127,14 @@ export default function SettingsScreen() {
           </Card>
         )}
 
+        {/* Account */}
+        <Card>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.adminLinks}>
+            <SettingsRow label="Change Password" onPress={() => router.push('/(app)/settings/change-password')} />
+          </View>
+        </Card>
+
         {/* App info */}
         <Card>
           <Text style={styles.sectionTitle}>About</Text>
