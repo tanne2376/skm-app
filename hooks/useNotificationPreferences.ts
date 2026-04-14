@@ -16,7 +16,14 @@ export function useNotificationPreferences() {
   const toggle = useMutation({
     mutationFn: async ({ type, enabled }: { type: NotificationType; enabled: boolean }) => {
       if (!profile) throw new Error('Not authenticated');
-      const updated = { ...preferences, [type]: enabled };
+      // Fetch fresh preferences to avoid stale closure issues during rapid toggles
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('notification_preferences')
+        .eq('id', profile.id)
+        .single();
+      const current = (freshProfile?.notification_preferences ?? {}) as NotificationPreferences;
+      const updated = { ...current, [type]: enabled };
       const { error } = await supabase
         .from('profiles')
         .update({ notification_preferences: updated })

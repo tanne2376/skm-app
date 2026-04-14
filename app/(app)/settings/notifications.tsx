@@ -50,6 +50,7 @@ export default function NotificationsScreen() {
                 onValueChange={(val) => toggle.mutate({ type: n.type, enabled: val })}
                 trackColor={{ false: COLORS.grey[700], true: COLORS.accent }}
                 thumbColor={COLORS.white}
+                disabled={toggle.isPending}
               />
             </View>
           ))}

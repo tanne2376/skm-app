@@ -37,8 +37,12 @@ export function useBookSession() {
           // If class is full, try to join waitlist
           await joinWaitlist(session.id, authSession.user.id, 'cash');
         } else {
-          // Notify teacher/admins of the cash booking
-          invokeFunction('notify-event', { event: 'class_booked_cash', sessionId: session.id }).catch(() => {});
+          // Notify teacher/admins of the cash booking (best effort)
+          try {
+            await invokeFunction('notify-event', { event: 'class_booked_cash', sessionId: session.id });
+          } catch (notifyError) {
+            console.warn('Failed to dispatch class_booked_cash', notifyError);
+          }
         }
 
       } else if (paymentMethod === 'membership') {

@@ -1,6 +1,6 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
-import { notify, notifyMany } from '../_shared/notify.ts';
+import { notify, notifyMany, notifyClassJoined } from '../_shared/notify.ts';
 
 /**
  * Lightweight edge function for sending notifications from client-side events
@@ -31,59 +31,28 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const payload = await req.json() as EventPayload;
+  let payload: EventPayload;
+  try {
+    payload = await req.json() as EventPayload;
+  } catch {
+    return errorResponse('Invalid JSON payload', 400);
+  }
   const adminClient = createAdminClient();
 
   // ── class_booked_cash: notify teacher + admins ────────────────────────
   if (payload.event === 'class_booked_cash' && payload.sessionId) {
-    const { data: session } = await adminClient
-      .from('class_sessions')
-      .select('session_date, teacher_id, capacity, class_templates(name, capacity)')
-      .eq('id', payload.sessionId)
+    const { data: student } = await adminClient
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
       .single();
 
-    if (session) {
-      const { data: student } = await adminClient
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-
-      const sessionName = (session as any).class_templates?.name ?? 'Class';
-      const notifyIds: string[] = [];
-      if ((session as any).teacher_id) notifyIds.push((session as any).teacher_id);
-      const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin');
-      for (const a of admins ?? []) {
-        if (!notifyIds.includes(a.id)) notifyIds.push(a.id);
-      }
-
-      await notifyMany({
-        adminClient,
-        userIds: notifyIds,
-        type: 'class_joined',
-        title: 'Student joined class',
-        body: `${student?.full_name ?? 'A student'} booked ${sessionName} on ${session.session_date} (cash).`,
-        data: { sessionId: payload.sessionId },
-      });
-
-      // Check if full
-      const effectiveCapacity = (session as any).capacity ?? (session as any).class_templates?.capacity ?? 20;
-      const { count } = await adminClient
-        .from('bookings')
-        .select('id', { count: 'exact', head: true })
-        .eq('session_id', payload.sessionId)
-        .eq('status', 'confirmed');
-      if (count !== null && count >= effectiveCapacity && (session as any).teacher_id) {
-        await notify({
-          adminClient,
-          userId: (session as any).teacher_id,
-          type: 'class_full',
-          title: 'Class is full',
-          body: `${sessionName} on ${session.session_date} has reached capacity (${effectiveCapacity}).`,
-          data: { sessionId: payload.sessionId },
-        });
-      }
-    }
+    await notifyClassJoined({
+      adminClient,
+      sessionId: payload.sessionId,
+      studentName: student?.full_name ?? 'A student',
+      suffix: '(cash)',
+    });
   }
 
   // ── one_to_one_booked_cash: notify the 1-to-1 owner ──────────────────
@@ -152,7 +121,7 @@ Deno.serve(async (req) => {
   else if (payload.event === 'class_time_changed' && payload.sessionId) {
     const { data: session } = await adminClient
       .from('class_sessions')
-      .select('session_date, class_templates(name)')
+      .select('session_date, teacher_id, class_templates(name)')
       .eq('id', payload.sessionId)
       .single();
 
@@ -166,16 +135,9 @@ Deno.serve(async (req) => {
         .eq('session_id', payload.sessionId)
         .in('status', ['confirmed', 'waitlisted']);
 
-      // Also notify the teacher
-      const { data: fullSession } = await adminClient
-        .from('class_sessions')
-        .select('teacher_id')
-        .eq('id', payload.sessionId)
-        .single();
-
       const recipientIds = (bookings ?? []).map((b: any) => b.student_id);
-      if (fullSession?.teacher_id && !recipientIds.includes(fullSession.teacher_id)) {
-        recipientIds.push(fullSession.teacher_id);
+      if ((session as any).teacher_id && !recipientIds.includes((session as any).teacher_id)) {
+        recipientIds.push((session as any).teacher_id);
       }
 
       // Filter out admins (they made the change)
@@ -199,6 +161,12 @@ Deno.serve(async (req) => {
         data: { sessionId: payload.sessionId },
       });
     }
+  }
+
+  else {
+    // Unknown event type
+    console.warn(`[notify-event] Unknown event type: ${payload.event}`);
+    return errorResponse(`Unknown event type: ${payload.event}`, 400);
   }
 
   return jsonResponse({ ok: true });

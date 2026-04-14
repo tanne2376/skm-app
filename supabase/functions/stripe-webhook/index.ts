@@ -1,6 +1,6 @@
 import { createAdminClient } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
-import { notify, notifyMany } from '../_shared/notify.ts';
+import { notify, notifyMany, notifyClassJoined } from '../_shared/notify.ts';
 
 const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!;
 
@@ -57,49 +57,11 @@ Deno.serve(async (req) => {
           .eq('id', student_id)
           .single();
 
-        const { data: session } = await adminClient
-          .from('class_sessions')
-          .select('session_date, start_time, teacher_id, capacity, template_id, class_templates(name, capacity)')
-          .eq('id', session_id)
-          .single();
-
-        if (session) {
-          const sessionName = (session as any).class_templates?.name ?? 'Class';
-
-          // Notify teacher + admins: student joined
-          const notifyIds: string[] = [];
-          if ((session as any).teacher_id) notifyIds.push((session as any).teacher_id);
-          const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin');
-          for (const a of admins ?? []) {
-            if (!notifyIds.includes(a.id)) notifyIds.push(a.id);
-          }
-          await notifyMany({
-            adminClient,
-            userIds: notifyIds,
-            type: 'class_joined',
-            title: 'Student joined class',
-            body: `${profile?.full_name ?? 'A student'} booked ${sessionName} on ${session.session_date}.`,
-            data: { sessionId: session_id },
-          });
-
-          // Check if class is now full → notify teacher
-          const effectiveCapacity = (session as any).capacity ?? (session as any).class_templates?.capacity ?? 20;
-          const { count: confirmedCount } = await adminClient
-            .from('bookings')
-            .select('id', { count: 'exact', head: true })
-            .eq('session_id', session_id)
-            .eq('status', 'confirmed');
-          if (confirmedCount !== null && confirmedCount >= effectiveCapacity && (session as any).teacher_id) {
-            await notify({
-              adminClient,
-              userId: (session as any).teacher_id,
-              type: 'class_full',
-              title: 'Class is full',
-              body: `${sessionName} on ${session.session_date} has reached capacity (${effectiveCapacity}).`,
-              data: { sessionId: session_id },
-            });
-          }
-        }
+        await notifyClassJoined({
+          adminClient,
+          sessionId: session_id,
+          studentName: profile?.full_name ?? 'A student',
+        });
       } else if (booking_type === 'one_to_one') {
         await adminClient
           .from('one_to_ones')

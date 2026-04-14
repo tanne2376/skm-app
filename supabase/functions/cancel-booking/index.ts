@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   // Fetch booking with session details
   const { data: booking } = await adminClient
     .from('bookings')
-    .select('*, class_sessions(session_date, start_time, class_templates(name))')
+    .select('*, class_sessions(session_date, start_time, teacher_id, class_templates(name))')
     .eq('id', bookingId)
     .single();
 
@@ -198,19 +198,18 @@ Deno.serve(async (req) => {
     .single();
   const studentName = cancellingStudent?.full_name ?? 'A student';
 
-  const notifyIds: string[] = [];
+  const notifyIds = new Set<string>();
   // Session teacher
-  if (session.teacher_id) notifyIds.push(session.teacher_id);
+  if (session.teacher_id) notifyIds.add(session.teacher_id);
   // All admins
   const { data: admins } = await adminClient
     .from('profiles')
     .select('id')
     .eq('role', 'admin');
-  for (const a of admins ?? []) {
-    if (!notifyIds.includes(a.id)) notifyIds.push(a.id);
-  }
+  for (const a of admins ?? []) notifyIds.add(a.id);
   // Don't notify the person who cancelled (they already know)
-  const filteredIds = notifyIds.filter((id) => id !== user.id);
+  notifyIds.delete(user.id);
+  const filteredIds = Array.from(notifyIds);
   await notifyMany({
     adminClient,
     userIds: filteredIds,
