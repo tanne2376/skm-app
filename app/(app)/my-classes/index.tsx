@@ -44,7 +44,7 @@ export default function MyClassesScreen() {
   });
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <ScreenHeader title="My Classes" />
       <FlatList
         data={sessions ?? []}

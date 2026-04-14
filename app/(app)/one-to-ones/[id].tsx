@@ -15,6 +15,7 @@ import { supabase, invokeFunction } from '@/lib/supabase';
 import { initializePaymentSheet, openPaymentSheet, formatGBP } from '@/lib/stripe';
 import { OneToOneWithDetails, PaymentMethod } from '@/types';
 
+
 export default function OneToOneDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -47,6 +48,12 @@ export default function OneToOneDetailScreen() {
           .select();
         if (error) throw error;
         if (!updated?.length) throw new Error('This session is no longer available.');
+        // Notify the 1-to-1 owner (best effort, without failing booking)
+        try {
+          await invokeFunction('notify-event', { event: 'one_to_one_booked_cash', oneToOneId: id });
+        } catch (notifyError) {
+          console.warn('Failed to dispatch one_to_one_booked_cash', notifyError);
+        }
       } else {
         const { data, error } = await invokeFunction<{
           clientSecret: string; ephemeralKeySecret: string; customerId: string;

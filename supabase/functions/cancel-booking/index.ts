@@ -2,6 +2,7 @@ import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shar
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 import { membershipWeekStart } from '../_shared/membershipWeek.ts';
+import { notify, notifyMany } from '../_shared/notify.ts';
 
 const CANCELLATION_WINDOW_HOURS = 3;
 
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
   // Fetch booking with session details
   const { data: booking } = await adminClient
     .from('bookings')
-    .select('*, class_sessions(session_date, start_time, class_templates(name))')
+    .select('*, class_sessions(session_date, start_time, teacher_id, class_templates(name))')
     .eq('id', bookingId)
     .single();
 
@@ -187,6 +188,36 @@ Deno.serve(async (req) => {
       }
     }
   }
+
+  // Notify teacher + admins that a student left
+  const sessionName = (session as any).class_templates?.name ?? 'Class';
+  const { data: cancellingStudent } = await adminClient
+    .from('profiles')
+    .select('full_name')
+    .eq('id', booking.student_id)
+    .single();
+  const studentName = cancellingStudent?.full_name ?? 'A student';
+
+  const notifyIds = new Set<string>();
+  // Session teacher
+  if (session.teacher_id) notifyIds.add(session.teacher_id);
+  // All admins
+  const { data: admins } = await adminClient
+    .from('profiles')
+    .select('id')
+    .eq('role', 'admin');
+  for (const a of admins ?? []) notifyIds.add(a.id);
+  // Don't notify the person who cancelled (they already know)
+  notifyIds.delete(user.id);
+  const filteredIds = Array.from(notifyIds);
+  await notifyMany({
+    adminClient,
+    userIds: filteredIds,
+    type: 'class_left',
+    title: 'Student left class',
+    body: `${studentName} cancelled their booking for ${sessionName}.`,
+    data: { sessionId: booking.session_id },
+  });
 
   // Promote next person on the waitlist
   const { error: promoteError } = await adminClient.functions.invoke('promote-waitlist', {

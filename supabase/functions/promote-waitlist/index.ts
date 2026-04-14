@@ -2,6 +2,7 @@ import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shar
 import { createAdminClient } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 import { membershipWeekStart } from '../_shared/membershipWeek.ts';
+import { notify } from '../_shared/notify.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -126,16 +127,14 @@ Deno.serve(async (req) => {
       });
 
       // Send push notification
-      if (student?.push_token) {
-        await adminClient.functions.invoke('send-notification', {
-          body: {
-            pushToken: student.push_token,
-            title: 'You\'re in! 🥊',
-            body: `A spot opened up for ${sessionName}. Your booking is confirmed.`,
-            data: { sessionId },
-          },
-        });
-      }
+      await notify({
+        adminClient,
+        userId: booking.student_id,
+        type: 'waitlist_promotion',
+        title: 'You\'re in!',
+        body: `A spot opened up for ${sessionName}. Your booking is confirmed.`,
+        data: { sessionId },
+      });
 
       return jsonResponse({ promoted: true, studentId: booking.student_id });
     }

@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { supabase, invokeFunction } from '@/lib/supabase';
 import { Location } from '@/types';
 
 export default function CreateOneToOneScreen() {
@@ -65,7 +65,7 @@ export default function CreateOneToOneScreen() {
       const startMM = String(startTime.getMinutes()).padStart(2, '0');
       const startTimeStr = `${startHH}:${startMM}`;
 
-      const { error } = await supabase.from('one_to_ones').insert({
+      const { data: inserted, error } = await supabase.from('one_to_ones').insert({
         creator_id: session!.user.id,
         teacher_id: session!.user.id,
         title: title.trim(),
@@ -78,8 +78,13 @@ export default function CreateOneToOneScreen() {
         location_text: selectedLocation
           ? (customLocation.trim() || selectedLocation.address)
           : customLocation.trim(),
-      });
+      }).select('id').single();
       if (error) throw new Error(error.message);
+
+      // Notify students + teachers about the new 1-to-1 slot
+      if (inserted) {
+        invokeFunction('notify-event', { event: 'one_to_one_created', oneToOneId: inserted.id }).catch(() => {});
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['one_to_ones'] });

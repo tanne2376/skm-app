@@ -9,7 +9,7 @@ import { COLORS } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { supabase } from '@/lib/supabase';
+import { supabase, invokeFunction } from '@/lib/supabase';
 import { ClassTemplate, Profile } from '@/types';
 
 export default function EditSessionScreen() {
@@ -115,6 +115,21 @@ export default function EditSessionScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
       queryClient.invalidateQueries({ queryKey: ['class_session', sessionId] });
+
+      // If the time changed on an existing session, notify booked students + teacher
+      if (sessionId && existingSession) {
+        const oldStart = (existingSession as any).start_time?.slice(0, 5);
+        const oldEnd = (existingSession as any).end_time?.slice(0, 5);
+        if (oldStart !== startTime || oldEnd !== endTime) {
+          invokeFunction('notify-event', {
+            event: 'class_time_changed',
+            sessionId,
+            oldTime: `${oldStart}–${oldEnd}`,
+            newTime: `${startTime}–${endTime}`,
+          }).catch(() => {});
+        }
+      }
+
       Alert.alert('Saved', 'Session updated.', [{ text: 'OK', onPress: () => router.back() }]);
     },
     onError: (e: Error) => Alert.alert('Error', e.message),

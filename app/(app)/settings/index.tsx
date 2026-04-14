@@ -50,7 +50,7 @@ export default function SettingsScreen() {
   const roleVariant = role === 'admin' ? 'error' : role === 'teacher' ? 'info' : 'neutral';
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <ScreenHeader title="Settings" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
@@ -104,7 +104,9 @@ export default function SettingsScreen() {
         {/* Notifications */}
         <Card>
           <Text style={styles.sectionTitle}>Notifications</Text>
-          <Text style={styles.sectionDesc}>Push notifications are managed by your device. Reminders are scheduled automatically when you book.</Text>
+          <View style={styles.adminLinks}>
+            <SettingsRow label="Notification Preferences" onPress={() => router.push('/(app)/settings/notifications')} />
+          </View>
         </Card>
 
         {/* Session defaults (teachers + admins) */}
