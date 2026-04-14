@@ -7,6 +7,19 @@ export type MembershipStatus = 'active' | 'cancelling' | 'cancelled' | 'past_due
 export type OneToOneStatus = 'available' | 'booked' | 'cancelled' | 'completed';
 export type LocationType = 'predefined' | 'custom';
 
+export type NotificationType =
+  | 'waitlist_promotion'
+  | 'one_to_one_available'
+  | 'upcoming_class'
+  | 'class_joined'
+  | 'class_left'
+  | 'one_to_one_booked'
+  | 'class_full'
+  | 'class_time_changed'
+  | 'membership_renewal';
+
+export type NotificationPreferences = Partial<Record<NotificationType, boolean>>;
+
 export interface Profile {
   id: string;
   full_name: string;
@@ -15,6 +28,7 @@ export interface Profile {
   stripe_customer_id: string | null;
   push_token: string | null;
   oto_default_price: number;
+  notification_preferences: NotificationPreferences;
   created_at: string;
 }
 

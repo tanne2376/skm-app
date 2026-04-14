@@ -1,5 +1,6 @@
 import { createAdminClient } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { notify, notifyMany } from '../_shared/notify.ts';
 
 const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!;
 
@@ -52,26 +53,52 @@ Deno.serve(async (req) => {
 
         const { data: profile } = await adminClient
           .from('profiles')
-          .select('push_token, full_name')
+          .select('full_name')
           .eq('id', student_id)
           .single();
 
         const { data: session } = await adminClient
           .from('class_sessions')
-          .select('session_date, start_time, class_templates(name)')
+          .select('session_date, start_time, teacher_id, capacity, template_id, class_templates(name, capacity)')
           .eq('id', session_id)
           .single();
 
-        if (profile?.push_token && session) {
-          const sessionName = (session as any).class_templates?.name;
-          await adminClient.functions.invoke('send-notification', {
-            body: {
-              pushToken: profile.push_token,
-              title: 'Booking confirmed! 🥊',
-              body: `${sessionName} on ${session.session_date} at ${session.start_time.slice(0, 5)}`,
-              data: { sessionId: session_id },
-            },
+        if (session) {
+          const sessionName = (session as any).class_templates?.name ?? 'Class';
+
+          // Notify teacher + admins: student joined
+          const notifyIds: string[] = [];
+          if ((session as any).teacher_id) notifyIds.push((session as any).teacher_id);
+          const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin');
+          for (const a of admins ?? []) {
+            if (!notifyIds.includes(a.id)) notifyIds.push(a.id);
+          }
+          await notifyMany({
+            adminClient,
+            userIds: notifyIds,
+            type: 'class_joined',
+            title: 'Student joined class',
+            body: `${profile?.full_name ?? 'A student'} booked ${sessionName} on ${session.session_date}.`,
+            data: { sessionId: session_id },
           });
+
+          // Check if class is now full → notify teacher
+          const effectiveCapacity = (session as any).capacity ?? (session as any).class_templates?.capacity ?? 20;
+          const { count: confirmedCount } = await adminClient
+            .from('bookings')
+            .select('id', { count: 'exact', head: true })
+            .eq('session_id', session_id)
+            .eq('status', 'confirmed');
+          if (confirmedCount !== null && confirmedCount >= effectiveCapacity && (session as any).teacher_id) {
+            await notify({
+              adminClient,
+              userId: (session as any).teacher_id,
+              type: 'class_full',
+              title: 'Class is full',
+              body: `${sessionName} on ${session.session_date} has reached capacity (${effectiveCapacity}).`,
+              data: { sessionId: session_id },
+            });
+          }
         }
       } else if (booking_type === 'one_to_one') {
         await adminClient
@@ -79,6 +106,31 @@ Deno.serve(async (req) => {
           .update({ payment_status: 'paid' })
           .eq('stripe_payment_intent_id', obj.id)
           .eq('payment_status', 'pending');
+
+        // Notify the 1-to-1 owner that it was booked
+        const { data: oto } = await adminClient
+          .from('one_to_ones')
+          .select('teacher_id, creator_id, title, student_id')
+          .eq('stripe_payment_intent_id', obj.id)
+          .single();
+        if (oto) {
+          const { data: student } = await adminClient
+            .from('profiles')
+            .select('full_name')
+            .eq('id', oto.student_id)
+            .single();
+          const ownerId = oto.creator_id ?? oto.teacher_id;
+          if (ownerId) {
+            await notify({
+              adminClient,
+              userId: ownerId,
+              type: 'one_to_one_booked',
+              title: '1-to-1 booked',
+              body: `${student?.full_name ?? 'Someone'} booked your session "${oto.title}".`,
+              data: { oneToOneId: obj.metadata?.one_to_one_id },
+            });
+          }
+        }
       }
     } catch (err: any) {
       return errResp(eventType, err);
@@ -215,17 +267,17 @@ Deno.serve(async (req) => {
       if (customerId) {
         const { data: profile } = await adminClient
           .from('profiles')
-          .select('push_token')
+          .select('id')
           .eq('stripe_customer_id', customerId)
           .single();
-        if (profile?.push_token) {
-          await adminClient.functions.invoke('send-notification', {
-            body: {
-              pushToken: profile.push_token,
-              title: 'Membership payment failed',
-              body: 'Your membership payment could not be processed. Please update your payment method.',
-              data: { screen: 'membership' },
-            },
+        if (profile) {
+          await notify({
+            adminClient,
+            userId: profile.id,
+            type: 'membership_renewal',
+            title: 'Membership payment failed',
+            body: 'Your membership payment could not be processed. Please update your payment method.',
+            data: { screen: 'membership' },
           });
         }
       }
@@ -282,17 +334,17 @@ Deno.serve(async (req) => {
       if (customerId) {
         const { data: profile } = await adminClient
           .from('profiles')
-          .select('push_token')
+          .select('id')
           .eq('stripe_customer_id', customerId)
           .single();
-        if (profile?.push_token) {
-          await adminClient.functions.invoke('send-notification', {
-            body: {
-              pushToken: profile.push_token,
-              title: 'Membership cancelled',
-              body: 'Your Switch-Kick Mafia membership has ended.',
-              data: { screen: 'membership' },
-            },
+        if (profile) {
+          await notify({
+            adminClient,
+            userId: profile.id,
+            type: 'membership_renewal',
+            title: 'Membership cancelled',
+            body: 'Your Switch-Kick Mafia membership has ended.',
+            data: { screen: 'membership' },
           });
         }
       }

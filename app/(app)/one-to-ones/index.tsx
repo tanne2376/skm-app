@@ -83,7 +83,7 @@ export default function OneToOnesScreen() {
   ];
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <ScreenHeader title="1-to-1 Sessions" />
 
       <View style={styles.tabs}>

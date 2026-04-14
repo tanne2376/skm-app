@@ -36,6 +36,9 @@ export function useBookSession() {
           if (error.code === '23505') throw new Error('You already have a booking for this class.');
           // If class is full, try to join waitlist
           await joinWaitlist(session.id, authSession.user.id, 'cash');
+        } else {
+          // Notify teacher/admins of the cash booking
+          invokeFunction('notify-event', { event: 'class_booked_cash', sessionId: session.id }).catch(() => {});
         }
 
       } else if (paymentMethod === 'membership') {

@@ -117,7 +117,7 @@ export default function HomeScreen() {
   const isMutating = bookSession.isPending || cancelBooking.isPending || joinWaitlist.isPending;
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <ScreenHeader title="Upcoming Classes" />
 
       <FlatList
