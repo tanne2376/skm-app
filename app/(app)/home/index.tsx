@@ -35,9 +35,10 @@ export default function HomeScreen() {
   const isAdmin = role === 'admin';
   const { data: allSessions, isLoading, isFetching, refetch } = useUpcomingSessions();
 
-  // Teachers don't see classes they're assigned to teach (those are in My Classes)
+  // Hide past sessions and filter out classes the teacher is assigned to teach
+  const now = new Date();
   const sessions = allSessions?.filter(
-    (s) => isAdmin || s.teacher?.id !== authSession?.user.id
+    (s) => new Date(`${s.session_date}T${s.start_time}`) > now && (isAdmin || s.teacher?.id !== authSession?.user.id)
   );
   const { data: membership } = useActiveMembership();
   const bookSession = useBookSession();
@@ -337,7 +338,11 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
             </TouchableOpacity>
           </View>
           <FlatList
-            data={rosterBookings ?? []}
+            data={[...(rosterBookings ?? [])].sort((a, b) => {
+              const aPending = a.payment_method === 'cash' && a.payment_status === 'pending' ? 0 : 1;
+              const bPending = b.payment_method === 'cash' && b.payment_status === 'pending' ? 0 : 1;
+              return aPending - bPending;
+            })}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ padding: 16 }}
             renderItem={({ item }) => (

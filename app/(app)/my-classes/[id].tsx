@@ -85,7 +85,11 @@ export default function MyClassRosterScreen() {
       </View>
 
       <FlatList
-        data={bookings ?? []}
+        data={[...(bookings ?? [])].sort((a, b) => {
+          const aPending = a.payment_method === 'cash' && a.payment_status === 'pending' ? 0 : 1;
+          const bPending = b.payment_method === 'cash' && b.payment_status === 'pending' ? 0 : 1;
+          return aPending - bPending;
+        })}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         onRefresh={refetch}
