@@ -221,6 +221,7 @@ Deno.serve(async (req) => {
 
   // ── Track late cancellation (only for confirmed self-cancellations) ─────
   let lateCancelCount = 0;
+  let isNowBlocked = false;
   const isStudentSelfCancel = booking.student_id === user.id && booking.status === 'confirmed';
   if (withinWindow && isStudentSelfCancel) {
     const { error: insertError } = await adminClient.from('late_cancellations').insert({
@@ -229,14 +230,18 @@ Deno.serve(async (req) => {
       session_id: booking.session_id,
       session_start_time: sessionStart.toISOString(),
     });
-    if (insertError) throw insertError;
+    // 23505 = unique_violation — treat duplicate strike as idempotent success
+    if (insertError && insertError.code !== '23505') throw insertError;
 
-    // Get updated count for this month
-    const { data: countData, error: countError } = await adminClient.rpc('get_late_cancellation_count', {
-      p_user_id: booking.student_id,
-    });
+    // Get updated count and actual block state for this month
+    const [{ data: countData, error: countError }, { data: isBlocked, error: blockedError }] = await Promise.all([
+      adminClient.rpc('get_late_cancellation_count', { p_user_id: booking.student_id }),
+      adminClient.rpc('is_user_booking_blocked', { p_user_id: booking.student_id }),
+    ]);
     if (countError) throw countError;
+    if (blockedError) throw blockedError;
     lateCancelCount = countData ?? 0;
+    isNowBlocked = isBlocked ?? false;
   }
 
   // Promote next person on the waitlist
@@ -251,10 +256,11 @@ Deno.serve(async (req) => {
   return jsonResponse({
     refunded,
     lateCancelCount,
+    isNowBlocked,
     message: refunded
       ? 'Booking cancelled and refund issued.'
       : (withinWindow && isStudentSelfCancel)
-        ? lateCancelCount >= 3
+        ? isNowBlocked
           ? `Booking cancelled. No refund. You have ${lateCancelCount} late cancellations this month — you are now blocked from booking classes for the rest of this month.`
           : `Booking cancelled. No refund. This is late cancellation ${lateCancelCount} of 3 this month.`
         : withinWindow
