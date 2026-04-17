@@ -25,7 +25,8 @@ Deno.serve(async (req) => {
     sessionId = id;
 
     // Check late cancellation block
-    const { data: isBlocked } = await adminClient.rpc('is_user_booking_blocked', { p_user_id: user.id });
+    const { data: isBlocked, error: blockedError } = await adminClient.rpc('is_user_booking_blocked', { p_user_id: user.id });
+    if (blockedError) return errorResponse('Failed to check booking eligibility', 500);
     if (isBlocked) {
       return errorResponse('You are blocked from booking classes this month due to 3 or more late cancellations.', 403);
     }

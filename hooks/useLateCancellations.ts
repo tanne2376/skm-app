@@ -11,10 +11,12 @@ export function useBookingBlocked() {
     queryFn: async () => {
       const userId = session!.user.id;
 
-      const [{ data: isBlocked }, { data: count }] = await Promise.all([
+      const [{ data: isBlocked, error: blockedError }, { data: count, error: countError }] = await Promise.all([
         supabase.rpc('is_user_booking_blocked', { p_user_id: userId }),
         supabase.rpc('get_late_cancellation_count', { p_user_id: userId }),
       ]);
+      if (blockedError) throw blockedError;
+      if (countError) throw countError;
 
       return { blocked: isBlocked ?? false, count: count ?? 0 };
     },

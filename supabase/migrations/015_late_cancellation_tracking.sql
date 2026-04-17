@@ -84,10 +84,16 @@ returns table (
   is_blocked boolean,
   late_cancel_unblocked_until date
 )
-language sql
+language plpgsql
 security definer
 stable
 as $$
+begin
+  if get_user_role() != 'admin' then
+    return; -- empty result for non-admins
+  end if;
+
+  return query
   select
     p.id as user_id,
     p.full_name,
@@ -107,7 +113,7 @@ as $$
   left join lateral (
     select count(*)::integer as cnt
     from late_cancellations
-    where user_id = p.id
+    where late_cancellations.user_id = p.id
       and cancelled_at >= date_trunc('month', now())
       and cancelled_at < date_trunc('month', now()) + interval '1 month'
   ) lc on true
@@ -120,9 +126,10 @@ as $$
     limit 1
   ) m on true
   order by coalesce(lc.cnt, 0) desc, p.full_name asc;
+end;
 $$;
 
--- RPC: get late cancellation history for a specific user
+-- RPC: get late cancellation history for a specific user (admin or self)
 create or replace function get_user_late_cancellation_history(p_user_id uuid)
 returns table (
   id uuid,
@@ -132,10 +139,16 @@ returns table (
   session_start_time text,
   cancelled_at timestamptz
 )
-language sql
+language plpgsql
 security definer
 stable
 as $$
+begin
+  if auth.uid() != p_user_id and get_user_role() != 'admin' then
+    return; -- empty result for unauthorized callers
+  end if;
+
+  return query
   select
     lc.id,
     lc.session_id,
@@ -148,4 +161,5 @@ as $$
   join class_templates ct on ct.id = cs.template_id
   where lc.user_id = p_user_id
   order by lc.cancelled_at desc;
+end;
 $$;

@@ -468,7 +468,10 @@ function UsersTab() {
       // Set unblocked_until to end of current month
       const now = new Date();
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const dateStr = endOfMonth.toISOString().split('T')[0];
+      const y = endOfMonth.getFullYear();
+      const m = String(endOfMonth.getMonth() + 1).padStart(2, '0');
+      const d = String(endOfMonth.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
 
       const { error } = await supabase
         .from('profiles')

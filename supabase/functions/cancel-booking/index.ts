@@ -219,15 +219,15 @@ Deno.serve(async (req) => {
     data: { sessionId: booking.session_id },
   });
 
-  // ── Track late cancellation ──────────────────────────────────────────────
+  // ── Track late cancellation (only for confirmed self-cancellations) ─────
   let lateCancelCount = 0;
-  if (withinWindow) {
+  const isStudentSelfCancel = booking.student_id === user.id && booking.status === 'confirmed';
+  if (withinWindow && isStudentSelfCancel) {
     await adminClient.from('late_cancellations').insert({
       user_id: booking.student_id,
       booking_id: bookingId,
       session_id: booking.session_id,
       session_start_time: sessionStart.toISOString(),
-      cancelled_at: new Date().toISOString(),
     });
 
     // Get updated count for this month
