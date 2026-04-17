@@ -25,12 +25,14 @@ import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useBookSession, useCancelBooking, useJoinWaitlist } from '@/hooks/useBookSession';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
+import { useBookingBlocked } from '@/hooks/useLateCancellations';
 import { supabase } from '@/lib/supabase';
 import { ClassSessionWithDetails, PaymentMethod, BookingWithStudent } from '@/types';
 import { PaymentStatusBadge } from '@/components/ui/Badge';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { role, session: authSession } = useAuth();
   const isAdmin = role === 'admin';
   const { data: allSessions, isLoading, isFetching, refetch } = useUpcomingSessions();
@@ -41,6 +43,9 @@ export default function HomeScreen() {
     (s) => new Date(`${s.session_date}T${s.start_time}`) > now && (isAdmin || s.teacher?.id !== authSession?.user.id)
   );
   const { data: membership } = useActiveMembership();
+  const { data: blockStatus } = useBookingBlocked();
+  const isBlockedFromBooking = !isAdmin && (blockStatus?.blocked ?? false);
+  const lateCancelCount = blockStatus?.count ?? 0;
   const bookSession = useBookSession();
   const cancelBooking = useCancelBooking();
   const joinWaitlist = useJoinWaitlist();
@@ -58,6 +63,14 @@ export default function HomeScreen() {
 
   function handleBookPress(session: ClassSessionWithDetails) {
     if (session.user_booking) return;
+
+    if (isBlockedFromBooking) {
+      Alert.alert(
+        'Booking Blocked',
+        'You are blocked from booking classes for the rest of this month due to 3 or more late cancellations. Contact an admin if you believe this is an error.',
+      );
+      return;
+    }
 
     const spotsLeft = session.effective_capacity - session.confirmed_count;
     const isFull = spotsLeft <= 0;
@@ -99,17 +112,25 @@ export default function HomeScreen() {
       return;
     }
 
+    const lateWarning = noRefund
+      ? lateCancelCount >= 2
+        ? 'Cancelling within 3 hours — no refund. This will be your 3rd late cancellation this month and you will be blocked from booking classes for the rest of the month.'
+        : `Cancelling within 3 hours — no refund. This is late cancellation ${lateCancelCount + 1} of 3 this month.`
+      : 'Are you sure? You will be refunded.';
+
     Alert.alert(
       'Cancel Booking',
-      noRefund
-        ? 'Cancelling within 3 hours — you will not receive a refund.'
-        : 'Are you sure? You will be refunded.',
+      lateWarning,
       [
         { text: 'Keep Booking', style: 'cancel' },
         {
           text: noRefund ? 'Cancel (No Refund)' : 'Cancel & Refund',
           style: 'destructive',
-          onPress: () => cancelBooking.mutate(session.user_booking!.id),
+          onPress: () => cancelBooking.mutate(session.user_booking!.id, {
+            onSuccess: () => {
+              queryClient.invalidateQueries({ queryKey: ['late_cancellation_block'] });
+            },
+          }),
         },
       ],
     );
@@ -143,6 +164,7 @@ export default function HomeScreen() {
               onCancel={() => handleCancel(item)}
               isMutating={isMutating}
               freeWithMembership={canUseMembership}
+              isBlockedFromBooking={isBlockedFromBooking}
             />
           )
         }

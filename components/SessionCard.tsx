@@ -13,9 +13,10 @@ interface SessionCardProps {
   isMutating?: boolean;
   isAdmin?: boolean;
   freeWithMembership?: boolean;
+  isBlockedFromBooking?: boolean;
 }
 
-export function SessionCard({ session, onBook, onCancel, isMutating = false, isAdmin = false, freeWithMembership = false }: SessionCardProps) {
+export function SessionCard({ session, onBook, onCancel, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false }: SessionCardProps) {
   const now = new Date();
   const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
   const isPast = sessionStart < now;
@@ -72,8 +73,15 @@ export function SessionCard({ session, onBook, onCancel, isMutating = false, isA
       {/* Actions */}
       {!isPast && (
         <View style={styles.actionRow}>
+          {/* Blocked from booking */}
+          {!userBooking && isBlockedFromBooking && (
+            <Text style={styles.blockedWarning}>
+              Blocked from booking — 3+ late cancellations this month
+            </Text>
+          )}
+
           {/* Not booked, spots available → Book */}
-          {!userBooking && !isFull && (
+          {!userBooking && !isFull && !isBlockedFromBooking && (
             <Button
               variant="primary"
               size="sm"
@@ -86,7 +94,7 @@ export function SessionCard({ session, onBook, onCancel, isMutating = false, isA
           )}
 
           {/* Not booked, full → Add to Waitlist */}
-          {!userBooking && isFull && (
+          {!userBooking && isFull && !isBlockedFromBooking && (
             <Button
               variant="secondary"
               size="sm"
@@ -173,6 +181,7 @@ const styles = StyleSheet.create({
   spotsFull: { color: COLORS.accent },
   waitlistPosition: { color: COLORS.warning, fontSize: 13, flex: 1 },
   noRefundWarning: { color: COLORS.warning, fontSize: 12, marginBottom: 6 },
+  blockedWarning: { color: COLORS.error, fontSize: 12, fontWeight: '600' },
   pastLabel: { color: COLORS.grey[600], fontSize: 12, marginTop: 8 },
   cancellationReason: { color: COLORS.grey[400], fontSize: 13, marginTop: 8, fontStyle: 'italic' },
 });

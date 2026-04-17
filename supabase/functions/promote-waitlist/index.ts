@@ -40,6 +40,10 @@ Deno.serve(async (req) => {
     const student = (booking as any).profiles;
     const sessionName = (session as any).class_templates?.name ?? 'Class';
 
+    // Skip blocked users
+    const { data: isBlocked } = await adminClient.rpc('is_user_booking_blocked', { p_user_id: booking.student_id });
+    if (isBlocked) continue;
+
     // Check if student has active membership
     const { data: membership } = await adminClient
       .from('memberships')

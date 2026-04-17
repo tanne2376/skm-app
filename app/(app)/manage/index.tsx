@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, FlatList, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, Alert,
+  TouchableOpacity, RefreshControl, Alert, ActivityIndicator,
 } from 'react-native';
 import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,16 +9,74 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, DAY_NAMES } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
 import { ClassTemplate, Profile } from '@/types';
+
+type ManageTab = 'timetable' | 'users';
 
 interface TemplateWithTeacher extends ClassTemplate {
   default_teacher?: Pick<Profile, 'id' | 'full_name'> | null;
 }
 
+interface UserWithLateCancellations {
+  user_id: string;
+  full_name: string;
+  role: string;
+  late_cancellation_count: number;
+  membership_tier: string | null;
+  membership_status: string | null;
+  is_blocked: boolean;
+  late_cancel_unblocked_until: string | null;
+}
+
+interface LateCancellationHistoryItem {
+  id: string;
+  session_id: string;
+  class_name: string;
+  session_date: string;
+  session_start_time: string;
+  cancelled_at: string;
+}
+
 export default function ManageScreen() {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<ManageTab>('timetable');
+
+  return (
+    <View style={styles.container}>
+      <ScreenHeader title="Manage" />
+
+      {/* Tab bar */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'timetable' && styles.tabActive]}
+          onPress={() => setActiveTab('timetable')}
+        >
+          <Text style={[styles.tabText, activeTab === 'timetable' && styles.tabTextActive]}>
+            Timetable
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'users' && styles.tabActive]}
+          onPress={() => setActiveTab('users')}
+        >
+          <Text style={[styles.tabText, activeTab === 'users' && styles.tabTextActive]}>
+            Users
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'timetable' ? <TimetableTab /> : <UsersTab />}
+    </View>
+  );
+}
+
+// ─── Timetable Tab ──────────────────────────────────────────────────────────
+
+function TimetableTab() {
   const queryClient = useQueryClient();
 
   const [editingTemplate, setEditingTemplate] = useState<TemplateWithTeacher | null>(null);
@@ -210,9 +268,7 @@ export default function ManageScreen() {
   const days = Object.keys(byDay).map(Number).sort((a, b) => a - b);
 
   return (
-    <View style={styles.container}>
-      <ScreenHeader title="Manage" />
-
+    <>
       <ScrollView
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
@@ -244,7 +300,7 @@ export default function ManageScreen() {
         ))}
       </ScrollView>
 
-      {/* Edit class modal — teacher picker lives inside the same Modal to avoid iOS two-modal stacking limitation */}
+      {/* Edit class modal */}
       <SlideUpModal
         visible={!!editingTemplate}
         onDismiss={() => { setShowTeacherPicker(false); setEditingTemplate(null); }}
@@ -376,13 +432,176 @@ export default function ManageScreen() {
           </Button>
         </View>
       </SlideUpModal>
-    </View>
+    </>
   );
 }
+
+// ─── Users Tab ──────────────────────────────────────────────────────────────
+
+function UsersTab() {
+  const queryClient = useQueryClient();
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+
+  const { data: users, isLoading, refetch } = useQuery<UserWithLateCancellations[]>({
+    queryKey: ['admin_users_late_cancellations'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_users_with_late_cancellations');
+      if (error) throw error;
+      return (data ?? []) as UserWithLateCancellations[];
+    },
+  });
+
+  const { data: history, isLoading: historyLoading } = useQuery<LateCancellationHistoryItem[]>({
+    queryKey: ['late_cancellation_history', expandedUserId],
+    enabled: !!expandedUserId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_user_late_cancellation_history', {
+        p_user_id: expandedUserId,
+      });
+      if (error) throw error;
+      return (data ?? []) as LateCancellationHistoryItem[];
+    },
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      // Set unblocked_until to end of current month
+      const now = new Date();
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const dateStr = endOfMonth.toISOString().split('T')[0];
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ late_cancel_unblocked_until: dateStr })
+        .eq('id', userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_users_late_cancellations'] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  function handleUnblock(user: UserWithLateCancellations) {
+    Alert.alert(
+      'Unblock User',
+      `Allow ${user.full_name} to book classes for the rest of this month? They still have ${user.late_cancellation_count} late cancellations recorded.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unblock', onPress: () => unblockMutation.mutate(user.user_id) },
+      ],
+    );
+  }
+
+  function formatMembership(user: UserWithLateCancellations): string {
+    if (!user.membership_tier) return 'No membership';
+    const tierLabel = user.membership_tier === 'two_per_week' ? '2x/week' : 'Unlimited';
+    const statusLabel = user.membership_status === 'cancelling' ? ' (cancelling)' : '';
+    return `${tierLabel}${statusLabel}`;
+  }
+
+  function toggleExpand(userId: string) {
+    setExpandedUserId(prev => prev === userId ? null : userId);
+  }
+
+  return (
+    <FlatList
+      data={users ?? []}
+      keyExtractor={(item) => item.user_id}
+      contentContainerStyle={styles.list}
+      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} />}
+      renderItem={({ item }) => {
+        const isExpanded = expandedUserId === item.user_id;
+        return (
+          <TouchableOpacity onPress={() => toggleExpand(item.user_id)} activeOpacity={0.7}>
+            <Card style={styles.userCard}>
+              <View style={styles.userRow}>
+                <View style={styles.userInfo}>
+                  <Text style={styles.userName}>{item.full_name}</Text>
+                  <Text style={styles.userMeta}>
+                    {item.role} · {formatMembership(item)}
+                  </Text>
+                </View>
+                <View style={styles.userRight}>
+                  {item.late_cancellation_count > 0 && (
+                    <Text style={[
+                      styles.userCancelCount,
+                      item.late_cancellation_count >= 3 && styles.userCancelCountBlocked,
+                    ]}>
+                      {item.late_cancellation_count}
+                    </Text>
+                  )}
+                  {item.is_blocked && <Badge label="Blocked" variant="error" />}
+                </View>
+              </View>
+
+              {isExpanded && (
+                <View style={styles.expandedSection}>
+                  <Text style={styles.expandedHeading}>Late Cancellations This Month</Text>
+
+                  {item.is_blocked && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onPress={() => handleUnblock(item)}
+                      loading={unblockMutation.isPending}
+                      style={styles.unblockButton}
+                    >
+                      Unblock User
+                    </Button>
+                  )}
+
+                  {historyLoading && <ActivityIndicator color={COLORS.accent} style={{ marginTop: 8 }} />}
+
+                  {!historyLoading && (history ?? []).length === 0 && (
+                    <Text style={styles.noHistory}>No late cancellations recorded.</Text>
+                  )}
+
+                  {!historyLoading && (history ?? []).map((h) => (
+                    <View key={h.id} style={styles.historyRow}>
+                      <Text style={styles.historyClass}>{h.class_name}</Text>
+                      <Text style={styles.historyDate}>
+                        {new Date(h.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
+                          weekday: 'short', day: 'numeric', month: 'short',
+                        })} · {h.session_start_time.slice(0, 5)}
+                      </Text>
+                      <Text style={styles.historyCancelled}>
+                        Cancelled {new Date(h.cancelled_at).toLocaleDateString('en-GB', {
+                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Card>
+          </TouchableOpacity>
+        );
+      }}
+      ListEmptyComponent={
+        !isLoading ? (
+          <Text style={styles.emptyText}>No users found.</Text>
+        ) : null
+      }
+      ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+    />
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.black },
   list: { padding: 16, gap: 16 },
+
+  // Tab bar
+  tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.grey[800], marginHorizontal: 16 },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },
+  tabText: { color: COLORS.grey[400], fontSize: 14, fontWeight: '600' },
+  tabTextActive: { color: COLORS.white },
+
+  // Timetable
   daySection: { gap: 10 },
   dayHeading: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
 
@@ -423,4 +642,24 @@ const styles = StyleSheet.create({
   dayChipActive: { backgroundColor: COLORS.accent },
   dayChipText: { color: COLORS.grey[400], fontSize: 13, fontWeight: '600' },
   dayChipTextActive: { color: COLORS.white },
+
+  // Users tab
+  userCard: { padding: 14 },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  userInfo: { flex: 1 },
+  userName: { color: COLORS.white, fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  userMeta: { color: COLORS.grey[400], fontSize: 13 },
+  userRight: { alignItems: 'flex-end', gap: 4 },
+  userCancelCount: { color: COLORS.warning, fontSize: 20, fontWeight: '800' },
+  userCancelCountBlocked: { color: COLORS.error },
+
+  expandedSection: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.grey[800] },
+  expandedHeading: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  unblockButton: { marginBottom: 12, alignSelf: 'flex-start' },
+  noHistory: { color: COLORS.grey[600], fontSize: 13 },
+
+  historyRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.grey[800] },
+  historyClass: { color: COLORS.white, fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  historyDate: { color: COLORS.grey[400], fontSize: 12 },
+  historyCancelled: { color: COLORS.grey[600], fontSize: 11, marginTop: 2 },
 });

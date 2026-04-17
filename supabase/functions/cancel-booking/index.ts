@@ -219,6 +219,24 @@ Deno.serve(async (req) => {
     data: { sessionId: booking.session_id },
   });
 
+  // ── Track late cancellation ──────────────────────────────────────────────
+  let lateCancelCount = 0;
+  if (withinWindow) {
+    await adminClient.from('late_cancellations').insert({
+      user_id: booking.student_id,
+      booking_id: bookingId,
+      session_id: booking.session_id,
+      session_start_time: sessionStart.toISOString(),
+      cancelled_at: new Date().toISOString(),
+    });
+
+    // Get updated count for this month
+    const { data: countData } = await adminClient.rpc('get_late_cancellation_count', {
+      p_user_id: booking.student_id,
+    });
+    lateCancelCount = countData ?? 0;
+  }
+
   // Promote next person on the waitlist
   const { error: promoteError } = await adminClient.functions.invoke('promote-waitlist', {
     body: { sessionId: booking.session_id },
@@ -230,10 +248,13 @@ Deno.serve(async (req) => {
 
   return jsonResponse({
     refunded,
+    lateCancelCount,
     message: refunded
       ? 'Booking cancelled and refund issued.'
       : withinWindow
-        ? `Booking cancelled. No refund within ${CANCELLATION_WINDOW_HOURS} hours of class.`
+        ? lateCancelCount >= 3
+          ? `Booking cancelled. No refund. You have ${lateCancelCount} late cancellations this month — you are now blocked from booking classes for the rest of this month.`
+          : `Booking cancelled. No refund. This is late cancellation ${lateCancelCount} of 3 this month.`
         : 'Booking cancelled.',
   });
 });
