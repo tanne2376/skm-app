@@ -540,7 +540,7 @@ function UsersTab() {
 
               {isExpanded && (
                 <View style={styles.expandedSection}>
-                  <Text style={styles.expandedHeading}>Late Cancellations This Month</Text>
+                  <Text style={styles.expandedHeading}>Late Cancellation History</Text>
 
                   {item.is_blocked && (
                     <Button

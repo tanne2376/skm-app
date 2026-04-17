@@ -223,17 +223,19 @@ Deno.serve(async (req) => {
   let lateCancelCount = 0;
   const isStudentSelfCancel = booking.student_id === user.id && booking.status === 'confirmed';
   if (withinWindow && isStudentSelfCancel) {
-    await adminClient.from('late_cancellations').insert({
+    const { error: insertError } = await adminClient.from('late_cancellations').insert({
       user_id: booking.student_id,
       booking_id: bookingId,
       session_id: booking.session_id,
       session_start_time: sessionStart.toISOString(),
     });
+    if (insertError) throw insertError;
 
     // Get updated count for this month
-    const { data: countData } = await adminClient.rpc('get_late_cancellation_count', {
+    const { data: countData, error: countError } = await adminClient.rpc('get_late_cancellation_count', {
       p_user_id: booking.student_id,
     });
+    if (countError) throw countError;
     lateCancelCount = countData ?? 0;
   }
 
@@ -251,10 +253,12 @@ Deno.serve(async (req) => {
     lateCancelCount,
     message: refunded
       ? 'Booking cancelled and refund issued.'
-      : withinWindow
+      : (withinWindow && isStudentSelfCancel)
         ? lateCancelCount >= 3
           ? `Booking cancelled. No refund. You have ${lateCancelCount} late cancellations this month — you are now blocked from booking classes for the rest of this month.`
           : `Booking cancelled. No refund. This is late cancellation ${lateCancelCount} of 3 this month.`
-        : 'Booking cancelled.',
+        : withinWindow
+          ? 'Booking cancelled. No refund (late cancellation).'
+          : 'Booking cancelled.',
   });
 });
