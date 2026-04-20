@@ -37,11 +37,15 @@ export default function HomeScreen() {
   const isAdmin = role === 'admin';
   const { data: allSessions, isLoading, isFetching, refetch } = useUpcomingSessions();
 
-  // Hide past sessions and filter out classes the teacher is assigned to teach
+  // Hide past sessions — admin gets a 2hr buffer after session ends to collect payments
   const now = new Date();
-  const sessions = allSessions?.filter(
-    (s) => new Date(`${s.session_date}T${s.start_time}`) > now && (isAdmin || s.teacher?.id !== authSession?.user.id)
-  );
+  const sessions = allSessions?.filter((s) => {
+    const sessionEnd = new Date(`${s.session_date}T${s.end_time}`);
+    const cutoff = isAdmin
+      ? new Date(sessionEnd.getTime() + 2 * 60 * 60 * 1000)
+      : new Date(`${s.session_date}T${s.start_time}`);
+    return cutoff > now && (isAdmin || s.teacher?.id !== authSession?.user.id);
+  });
   const { data: membership } = useActiveMembership();
   const { data: blockStatus } = useBookingBlocked();
   const isBlockedFromBooking = !isAdmin && (blockStatus?.blocked ?? false);
