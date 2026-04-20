@@ -220,21 +220,24 @@ Deno.serve(async (req) => {
   });
 
   // ── Track late cancellation (only for confirmed self-cancellations) ─────
-  let lateCancelCount = 0;
-  let isNowBlocked = false;
+  let lateCancelCount: number | null = null;
+  let isNowBlocked: boolean | null = null;
+  let hasFreshLateCancelState = false;
   const isStudentSelfCancel = booking.student_id === user.id && booking.status === 'confirmed';
-  if (withinWindow && isStudentSelfCancel) {
+  if (isStudentSelfCancel) {
     try {
-      const { error: insertError } = await adminClient.from('late_cancellations').insert({
-        user_id: booking.student_id,
-        booking_id: bookingId,
-        session_id: booking.session_id,
-        session_start_time: `${session.session_date}T${session.start_time}`,
-      });
-      // 23505 = unique_violation — treat duplicate strike as idempotent success
-      if (insertError && insertError.code !== '23505') throw insertError;
+      if (withinWindow) {
+        const { error: insertError } = await adminClient.from('late_cancellations').insert({
+          user_id: booking.student_id,
+          booking_id: bookingId,
+          session_id: booking.session_id,
+          session_start_time: `${session.session_date}T${session.start_time}`,
+        });
+        // 23505 = unique_violation — treat duplicate strike as idempotent success
+        if (insertError && insertError.code !== '23505') throw insertError;
+      }
 
-      // Get updated count and actual block state for this month
+      // Always refresh strike/block state for the student so the response is accurate
       const [{ data: countData, error: countError }, { data: isBlocked, error: blockedError }] = await Promise.all([
         adminClient.rpc('get_late_cancellation_count', { p_user_id: booking.student_id }),
         adminClient.rpc('is_user_booking_blocked', { p_user_id: booking.student_id }),
@@ -243,6 +246,7 @@ Deno.serve(async (req) => {
       if (blockedError) throw blockedError;
       lateCancelCount = countData ?? 0;
       isNowBlocked = isBlocked ?? false;
+      hasFreshLateCancelState = true;
     } catch (err) {
       // Non-fatal: booking is already cancelled at this point (line 92-99),
       // and retries short-circuit at line 42. Log and continue so waitlist
@@ -262,13 +266,12 @@ Deno.serve(async (req) => {
 
   return jsonResponse({
     refunded,
-    lateCancelCount,
-    isNowBlocked,
+    ...(hasFreshLateCancelState && { lateCancelCount, isNowBlocked }),
     message: refunded
       ? 'Booking cancelled and refund issued.'
-      : (withinWindow && isStudentSelfCancel)
+      : (withinWindow && isStudentSelfCancel && hasFreshLateCancelState)
         ? isNowBlocked
-          ? `Booking cancelled. No refund. You have ${lateCancelCount} late cancellations this month — you are now blocked from booking classes for the rest of this month.`
+          ? `Booking cancelled. No refund. You have ${lateCancelCount} late cancellations this month — you are blocked from booking classes for the rest of this month.`
           : `Booking cancelled. No refund. This is late cancellation ${lateCancelCount} of 3 this month.`
         : withinWindow
           ? 'Booking cancelled. No refund (late cancellation).'
