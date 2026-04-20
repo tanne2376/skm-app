@@ -23,6 +23,14 @@ Deno.serve(async (req) => {
 
   if (type === 'class') {
     sessionId = id;
+
+    // Check late cancellation block
+    const { data: isBlocked, error: blockedError } = await adminClient.rpc('is_user_booking_blocked', { p_user_id: user.id });
+    if (blockedError) return errorResponse('Failed to check booking eligibility', 500);
+    if (isBlocked) {
+      return errorResponse('You are blocked from booking classes this month due to 3 or more late cancellations.', 403);
+    }
+
     // Use DB function to get effective price (handles overrides)
     const { data: priceData } = await adminClient.rpc('get_session_price', { p_session_id: id });
     if (!priceData) return errorResponse('Session not found', 404);
