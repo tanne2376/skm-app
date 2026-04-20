@@ -224,24 +224,31 @@ Deno.serve(async (req) => {
   let isNowBlocked = false;
   const isStudentSelfCancel = booking.student_id === user.id && booking.status === 'confirmed';
   if (withinWindow && isStudentSelfCancel) {
-    const { error: insertError } = await adminClient.from('late_cancellations').insert({
-      user_id: booking.student_id,
-      booking_id: bookingId,
-      session_id: booking.session_id,
-      session_start_time: sessionStart.toISOString(),
-    });
-    // 23505 = unique_violation — treat duplicate strike as idempotent success
-    if (insertError && insertError.code !== '23505') throw insertError;
+    try {
+      const { error: insertError } = await adminClient.from('late_cancellations').insert({
+        user_id: booking.student_id,
+        booking_id: bookingId,
+        session_id: booking.session_id,
+        session_start_time: `${session.session_date}T${session.start_time}`,
+      });
+      // 23505 = unique_violation — treat duplicate strike as idempotent success
+      if (insertError && insertError.code !== '23505') throw insertError;
 
-    // Get updated count and actual block state for this month
-    const [{ data: countData, error: countError }, { data: isBlocked, error: blockedError }] = await Promise.all([
-      adminClient.rpc('get_late_cancellation_count', { p_user_id: booking.student_id }),
-      adminClient.rpc('is_user_booking_blocked', { p_user_id: booking.student_id }),
-    ]);
-    if (countError) throw countError;
-    if (blockedError) throw blockedError;
-    lateCancelCount = countData ?? 0;
-    isNowBlocked = isBlocked ?? false;
+      // Get updated count and actual block state for this month
+      const [{ data: countData, error: countError }, { data: isBlocked, error: blockedError }] = await Promise.all([
+        adminClient.rpc('get_late_cancellation_count', { p_user_id: booking.student_id }),
+        adminClient.rpc('is_user_booking_blocked', { p_user_id: booking.student_id }),
+      ]);
+      if (countError) throw countError;
+      if (blockedError) throw blockedError;
+      lateCancelCount = countData ?? 0;
+      isNowBlocked = isBlocked ?? false;
+    } catch (err) {
+      // Non-fatal: booking is already cancelled at this point (line 92-99),
+      // and retries short-circuit at line 42. Log and continue so waitlist
+      // promotion still runs. Strike/block state will be consistent on next read.
+      console.error('Late cancellation tracking failed:', err);
+    }
   }
 
   // Promote next person on the waitlist
