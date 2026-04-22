@@ -47,7 +47,12 @@ export default function OneToOnesScreen() {
     queryKey: ['one_to_ones', 'mine', userId],
     enabled: !!session,
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const today = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+      ].join('-');
       const { data, error } = await supabase
         .from('one_to_ones')
         .select(`*, teacher:profiles!teacher_id(id, full_name), student:profiles!student_id(id, full_name), location:locations(id, name, address)`)
@@ -56,7 +61,6 @@ export default function OneToOnesScreen() {
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
-      const now = new Date();
       return (data ?? []).filter((oto: OneToOneWithDetails) => {
         const sessionEnd = new Date(`${oto.session_date}T${oto.end_time}`);
         const isPast = sessionEnd < now;
