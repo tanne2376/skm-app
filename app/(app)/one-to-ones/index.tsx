@@ -42,19 +42,31 @@ export default function OneToOnesScreen() {
     },
   });
 
-  // My Sessions: sessions I created (any status) + sessions I booked as student
+  // My Sessions: future sessions I created/teach/booked, plus any with pending cash payment
   const { data: mySessions, isLoading: loadingMy, refetch: refetchMy } = useQuery<OneToOneWithDetails[]>({
     queryKey: ['one_to_ones', 'mine', userId],
     enabled: !!session,
     queryFn: async () => {
+      const now = new Date();
+      const today = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+      ].join('-');
       const { data, error } = await supabase
         .from('one_to_ones')
         .select(`*, teacher:profiles!teacher_id(id, full_name), student:profiles!student_id(id, full_name), location:locations(id, name, address)`)
         .or(`creator_id.eq.${userId},teacher_id.eq.${userId},student_id.eq.${userId}`)
+        .or(`session_date.gte.${today},and(payment_method.eq.cash,payment_status.eq.pending)`)
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as OneToOneWithDetails[];
+      return (data ?? []).filter((oto: OneToOneWithDetails) => {
+        const sessionEnd = new Date(`${oto.session_date}T${oto.end_time}`);
+        const isPast = sessionEnd < now;
+        const isCashPending = oto.payment_method === 'cash' && oto.payment_status === 'pending';
+        return !isPast || isCashPending;
+      }) as OneToOneWithDetails[];
     },
   });
 
