@@ -2,8 +2,13 @@
 -- OWED MONEY TRACKING (issue #8)
 -- ============================================================
 -- Owed amount = sum of unconfirmed cash bookings (classes + 1-to-1s)
--- whose session is in the past, minus admin-recorded payments.
+-- whose session is in the past, minus admin-recorded paybacks.
 -- No new write happens when a session ends — owed is derived.
+--
+-- Paybacks (`payments_received`) are aggregate, not allocated to a
+-- specific session. `get_user_unconfirmed_cash_sessions` therefore
+-- always returns the original per-session amounts; the aggregate
+-- `get_user_owed_amount` is what reflects partial repayments.
 -- ============================================================
 
 -- Manual admin block flag, separate from late-cancellation auto-block
@@ -44,6 +49,7 @@ returns boolean
 language sql
 security definer
 stable
+set search_path = public
 as $$
   select
     coalesce((select is_manually_blocked from profiles where id = p_user_id), false)
@@ -73,6 +79,7 @@ returns integer
 language sql
 security definer
 stable
+set search_path = public
 as $$
   with class_owed as (
     select coalesce(sum(coalesce(cs.price, ct.price)), 0)::bigint as total
@@ -83,6 +90,7 @@ as $$
       and b.payment_method = 'cash'
       and b.payment_status = 'pending'
       and b.status = 'confirmed'
+      and cs.is_cancelled = false
       and (cs.session_date + cs.end_time) < now()
   ),
   oto_owed as (
@@ -107,8 +115,10 @@ as $$
   )::integer;
 $$;
 
--- Per-session breakdown of unconfirmed cash sessions (admin or self)
-create or replace function get_user_owed_breakdown(p_user_id uuid)
+-- Per-session list of unconfirmed cash sessions (admin or self).
+-- Returns the original session amounts; paybacks are NOT allocated
+-- to specific sessions — see get_user_owed_amount for the adjusted total.
+create or replace function get_user_unconfirmed_cash_sessions(p_user_id uuid)
 returns table (
   source_type text,
   source_id uuid,
@@ -119,6 +129,7 @@ returns table (
 language plpgsql
 security definer
 stable
+set search_path = public
 as $$
 begin
   if auth.uid() != p_user_id and get_user_role() != 'admin' then
@@ -139,6 +150,7 @@ begin
     and b.payment_method = 'cash'
     and b.payment_status = 'pending'
     and b.status = 'confirmed'
+    and cs.is_cancelled = false
     and (cs.session_date + cs.end_time) < now()
 
   union all
@@ -172,6 +184,7 @@ returns table (
 language plpgsql
 security definer
 stable
+set search_path = public
 as $$
 begin
   if auth.uid() != p_user_id and get_user_role() != 'admin' then
@@ -214,6 +227,7 @@ returns table (
 language plpgsql
 security definer
 stable
+set search_path = public
 as $$
 begin
   if get_user_role() != 'admin' then

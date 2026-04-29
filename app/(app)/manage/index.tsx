@@ -43,12 +43,22 @@ interface LateCancellationHistoryItem {
   cancelled_at: string;
 }
 
-interface OwedBreakdownItem {
+interface UnconfirmedCashSessionItem {
   source_type: 'class' | 'one_to_one';
   source_id: string;
   description: string;
   session_date: string;
   amount: number;
+}
+
+// Parse a pounds string ("12", "12.5", "12.50") directly into integer pence.
+// Returns null on invalid input. Avoids floating-point math on currency.
+function parsePoundsToPence(value: string): number | null {
+  const m = value.trim().match(/^(\d+)(?:\.(\d{1,2}))?$/);
+  if (!m) return null;
+  const pounds = Number(m[1]);
+  const fractional = (m[2] ?? '').padEnd(2, '0');
+  return pounds * 100 + Number(fractional);
 }
 
 interface PaymentHistoryItem {
@@ -485,19 +495,19 @@ function UsersTab() {
     },
   });
 
-  const { data: owedBreakdown, isLoading: owedLoading } = useQuery<OwedBreakdownItem[]>({
-    queryKey: ['owed_breakdown', expandedUserId],
+  const { data: unconfirmedSessions, isLoading: unconfirmedLoading } = useQuery<UnconfirmedCashSessionItem[]>({
+    queryKey: ['unconfirmed_cash_sessions', expandedUserId],
     enabled: !!expandedUserId,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_user_owed_breakdown', {
+      const { data, error } = await supabase.rpc('get_user_unconfirmed_cash_sessions', {
         p_user_id: expandedUserId,
       });
       if (error) throw error;
-      return (data ?? []) as OwedBreakdownItem[];
+      return (data ?? []) as UnconfirmedCashSessionItem[];
     },
   });
 
-  const { data: paymentHistory } = useQuery<PaymentHistoryItem[]>({
+  const { data: paymentHistory, isLoading: paymentHistoryLoading } = useQuery<PaymentHistoryItem[]>({
     queryKey: ['payment_history', expandedUserId],
     enabled: !!expandedUserId,
     queryFn: async () => {
@@ -596,12 +606,18 @@ function UsersTab() {
 
   function handleSubmitPayment() {
     if (!recordingPaymentFor) return;
-    const pounds = parseFloat(paymentAmount);
-    if (isNaN(pounds) || pounds <= 0) {
-      Alert.alert('Invalid amount', 'Enter an amount greater than zero.');
+    const pence = parsePoundsToPence(paymentAmount);
+    if (pence === null || pence <= 0) {
+      Alert.alert('Invalid amount', 'Enter an amount in pounds, e.g. 12.50.');
       return;
     }
-    const pence = Math.round(pounds * 100);
+    if (pence > recordingPaymentFor.owed_amount) {
+      Alert.alert(
+        'Amount exceeds owed',
+        `${recordingPaymentFor.full_name} owes ${formatGBP(recordingPaymentFor.owed_amount)}. Enter that or less.`,
+      );
+      return;
+    }
     recordPaymentMutation.mutate({
       userId: recordingPaymentFor.user_id,
       amount: pence,
@@ -691,13 +707,18 @@ function UsersTab() {
                     )}
 
                     <Text style={styles.expandedHeading}>
-                      Owed Money {item.owed_amount > 0 ? `· ${formatGBP(item.owed_amount)}` : ''}
+                      Owed {item.owed_amount > 0 ? formatGBP(item.owed_amount) : '£0.00'}
                     </Text>
-                    {owedLoading && <ActivityIndicator color={COLORS.accent} style={{ marginTop: 8 }} />}
-                    {!owedLoading && (owedBreakdown ?? []).length === 0 && (paymentHistory ?? []).length === 0 && (
+                    {unconfirmedLoading && <ActivityIndicator color={COLORS.accent} style={{ marginTop: 8 }} />}
+                    {!unconfirmedLoading && !paymentHistoryLoading
+                      && (unconfirmedSessions ?? []).length === 0
+                      && (paymentHistory ?? []).length === 0 && (
                       <Text style={styles.noHistory}>No outstanding cash payments.</Text>
                     )}
-                    {!owedLoading && (owedBreakdown ?? []).map((b) => (
+                    {!unconfirmedLoading && (unconfirmedSessions ?? []).length > 0 && (
+                      <Text style={styles.subHeading}>Unconfirmed Cash Sessions</Text>
+                    )}
+                    {!unconfirmedLoading && (unconfirmedSessions ?? []).map((b) => (
                       <View key={`${b.source_type}-${b.source_id}`} style={styles.historyRow}>
                         <View style={styles.owedRowTop}>
                           <Text style={styles.historyClass}>{b.description}</Text>
@@ -884,6 +905,7 @@ const styles = StyleSheet.create({
 
   expandedSection: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.grey[800] },
   expandedHeading: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  subHeading: { color: COLORS.grey[600], fontSize: 11, fontWeight: '600', letterSpacing: 0.5, marginBottom: 4 },
   actionsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   unblockButton: { marginBottom: 12, alignSelf: 'flex-start' },
   noHistory: { color: COLORS.grey[600], fontSize: 13 },
