@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
+import { formatGBP } from '@/lib/stripe';
 import { ClassTemplate, Profile } from '@/types';
 
 type ManageTab = 'timetable' | 'users';
@@ -28,7 +29,9 @@ interface UserWithLateCancellations {
   membership_tier: string | null;
   membership_status: string | null;
   is_blocked: boolean;
+  is_manually_blocked: boolean;
   late_cancel_unblocked_until: string | null;
+  owed_amount: number;
 }
 
 interface LateCancellationHistoryItem {
@@ -38,6 +41,22 @@ interface LateCancellationHistoryItem {
   session_date: string;
   session_start_time: string;
   cancelled_at: string;
+}
+
+interface OwedBreakdownItem {
+  source_type: 'class' | 'one_to_one';
+  source_id: string;
+  description: string;
+  session_date: string;
+  amount: number;
+}
+
+interface PaymentHistoryItem {
+  id: string;
+  amount: number;
+  note: string | null;
+  recorded_by_name: string | null;
+  recorded_at: string;
 }
 
 export default function ManageScreen() {
@@ -441,6 +460,9 @@ function TimetableTab() {
 function UsersTab() {
   const queryClient = useQueryClient();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [recordingPaymentFor, setRecordingPaymentFor] = useState<UserWithLateCancellations | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
 
   const { data: users, isLoading, refetch } = useQuery<UserWithLateCancellations[]>({
     queryKey: ['admin_users_late_cancellations'],
@@ -463,9 +485,32 @@ function UsersTab() {
     },
   });
 
+  const { data: owedBreakdown, isLoading: owedLoading } = useQuery<OwedBreakdownItem[]>({
+    queryKey: ['owed_breakdown', expandedUserId],
+    enabled: !!expandedUserId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_user_owed_breakdown', {
+        p_user_id: expandedUserId,
+      });
+      if (error) throw error;
+      return (data ?? []) as OwedBreakdownItem[];
+    },
+  });
+
+  const { data: paymentHistory } = useQuery<PaymentHistoryItem[]>({
+    queryKey: ['payment_history', expandedUserId],
+    enabled: !!expandedUserId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_user_payment_history', {
+        p_user_id: expandedUserId,
+      });
+      if (error) throw error;
+      return (data ?? []) as PaymentHistoryItem[];
+    },
+  });
+
   const unblockMutation = useMutation({
     mutationFn: async (userId: string) => {
-      // Set unblocked_until to end of current month
       const now = new Date();
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const y = endOfMonth.getFullYear();
@@ -485,6 +530,41 @@ function UsersTab() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
+  const setManualBlockMutation = useMutation({
+    mutationFn: async ({ userId, blocked }: { userId: string; blocked: boolean }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_manually_blocked: blocked })
+        .eq('id', userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_users_late_cancellations'] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: async ({ userId, amount, note }: { userId: string; amount: number; note: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('payments_received').insert({
+        user_id: userId,
+        amount,
+        note: note.trim() || null,
+        recorded_by: user?.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_users_late_cancellations'] });
+      queryClient.invalidateQueries({ queryKey: ['payment_history', expandedUserId] });
+      setRecordingPaymentFor(null);
+      setPaymentAmount('');
+      setPaymentNote('');
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
   function handleUnblock(user: UserWithLateCancellations) {
     Alert.alert(
       'Unblock User',
@@ -494,6 +574,39 @@ function UsersTab() {
         { text: 'Unblock', onPress: () => unblockMutation.mutate(user.user_id) },
       ],
     );
+  }
+
+  function handleToggleManualBlock(user: UserWithLateCancellations) {
+    const next = !user.is_manually_blocked;
+    Alert.alert(
+      next ? 'Block User' : 'Remove Manual Block',
+      next
+        ? `Block ${user.full_name} from booking any classes or 1-to-1s? They will not be able to book until you unblock them.`
+        : `Remove the manual block on ${user.full_name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: next ? 'Block' : 'Remove Block',
+          style: next ? 'destructive' : 'default',
+          onPress: () => setManualBlockMutation.mutate({ userId: user.user_id, blocked: next }),
+        },
+      ],
+    );
+  }
+
+  function handleSubmitPayment() {
+    if (!recordingPaymentFor) return;
+    const pounds = parseFloat(paymentAmount);
+    if (isNaN(pounds) || pounds <= 0) {
+      Alert.alert('Invalid amount', 'Enter an amount greater than zero.');
+      return;
+    }
+    const pence = Math.round(pounds * 100);
+    recordPaymentMutation.mutate({
+      userId: recordingPaymentFor.user_id,
+      amount: pence,
+      note: paymentNote,
+    });
   }
 
   function formatMembership(user: UserWithLateCancellations): string {
@@ -508,86 +621,198 @@ function UsersTab() {
   }
 
   return (
-    <FlatList
-      data={users ?? []}
-      keyExtractor={(item) => item.user_id}
-      contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} />}
-      renderItem={({ item }) => {
-        const isExpanded = expandedUserId === item.user_id;
-        return (
-          <TouchableOpacity onPress={() => toggleExpand(item.user_id)} activeOpacity={0.7}>
-            <Card style={styles.userCard}>
-              <View style={styles.userRow}>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{item.full_name}</Text>
-                  <Text style={styles.userMeta}>
-                    {item.role} · {formatMembership(item)}
-                  </Text>
-                </View>
-                <View style={styles.userRight}>
-                  {item.late_cancellation_count > 0 && (
-                    <Text style={[
-                      styles.userCancelCount,
-                      item.late_cancellation_count >= 3 && styles.userCancelCountBlocked,
-                    ]}>
-                      {item.late_cancellation_count}
+    <>
+      <FlatList
+        data={users ?? []}
+        keyExtractor={(item) => item.user_id}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} />}
+        renderItem={({ item }) => {
+          const isExpanded = expandedUserId === item.user_id;
+          const lateCancelBlocked = item.is_blocked && !item.is_manually_blocked;
+          return (
+            <TouchableOpacity onPress={() => toggleExpand(item.user_id)} activeOpacity={0.7}>
+              <Card style={styles.userCard}>
+                <View style={styles.userRow}>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{item.full_name}</Text>
+                    <Text style={styles.userMeta}>
+                      {item.role} · {formatMembership(item)}
                     </Text>
-                  )}
-                  {item.is_blocked && <Badge label="Blocked" variant="error" />}
+                    {item.owed_amount > 0 && (
+                      <Text style={styles.userOwed}>Owes {formatGBP(item.owed_amount)}</Text>
+                    )}
+                  </View>
+                  <View style={styles.userRight}>
+                    {item.late_cancellation_count > 0 && (
+                      <Text style={[
+                        styles.userCancelCount,
+                        item.late_cancellation_count >= 3 && styles.userCancelCountBlocked,
+                      ]}>
+                        {item.late_cancellation_count}
+                      </Text>
+                    )}
+                    {item.is_blocked && <Badge label="Blocked" variant="error" />}
+                  </View>
                 </View>
-              </View>
 
-              {isExpanded && (
-                <View style={styles.expandedSection}>
-                  <Text style={styles.expandedHeading}>Late Cancellation History</Text>
-
-                  {item.is_blocked && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onPress={() => handleUnblock(item)}
-                      loading={unblockMutation.isPending}
-                      style={styles.unblockButton}
-                    >
-                      Unblock User
-                    </Button>
-                  )}
-
-                  {historyLoading && <ActivityIndicator color={COLORS.accent} style={{ marginTop: 8 }} />}
-
-                  {!historyLoading && (history ?? []).length === 0 && (
-                    <Text style={styles.noHistory}>No late cancellations recorded.</Text>
-                  )}
-
-                  {!historyLoading && (history ?? []).map((h) => (
-                    <View key={h.id} style={styles.historyRow}>
-                      <Text style={styles.historyClass}>{h.class_name}</Text>
-                      <Text style={styles.historyDate}>
-                        {new Date(h.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
-                          weekday: 'short', day: 'numeric', month: 'short',
-                        })} · {h.session_start_time.slice(0, 5)}
-                      </Text>
-                      <Text style={styles.historyCancelled}>
-                        Cancelled {new Date(h.cancelled_at).toLocaleDateString('en-GB', {
-                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                        })}
-                      </Text>
+                {isExpanded && (
+                  <View style={styles.expandedSection}>
+                    <View style={styles.actionsRow}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => setRecordingPaymentFor(item)}
+                        style={{ flex: 1 }}
+                      >
+                        Record Payment
+                      </Button>
+                      <Button
+                        variant={item.is_manually_blocked ? 'secondary' : 'danger'}
+                        size="sm"
+                        onPress={() => handleToggleManualBlock(item)}
+                        loading={setManualBlockMutation.isPending}
+                        style={{ flex: 1 }}
+                      >
+                        {item.is_manually_blocked ? 'Remove Block' : 'Block User'}
+                      </Button>
                     </View>
-                  ))}
-                </View>
-              )}
-            </Card>
-          </TouchableOpacity>
-        );
-      }}
-      ListEmptyComponent={
-        !isLoading ? (
-          <Text style={styles.emptyText}>No users found.</Text>
-        ) : null
-      }
-      ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-    />
+
+                    {lateCancelBlocked && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => handleUnblock(item)}
+                        loading={unblockMutation.isPending}
+                        style={styles.unblockButton}
+                      >
+                        Unblock for Late Cancellations
+                      </Button>
+                    )}
+
+                    <Text style={styles.expandedHeading}>
+                      Owed Money {item.owed_amount > 0 ? `· ${formatGBP(item.owed_amount)}` : ''}
+                    </Text>
+                    {owedLoading && <ActivityIndicator color={COLORS.accent} style={{ marginTop: 8 }} />}
+                    {!owedLoading && (owedBreakdown ?? []).length === 0 && (paymentHistory ?? []).length === 0 && (
+                      <Text style={styles.noHistory}>No outstanding cash payments.</Text>
+                    )}
+                    {!owedLoading && (owedBreakdown ?? []).map((b) => (
+                      <View key={`${b.source_type}-${b.source_id}`} style={styles.historyRow}>
+                        <View style={styles.owedRowTop}>
+                          <Text style={styles.historyClass}>{b.description}</Text>
+                          <Text style={styles.owedAmount}>{formatGBP(b.amount)}</Text>
+                        </View>
+                        <Text style={styles.historyDate}>
+                          {b.source_type === 'one_to_one' ? '1-to-1' : 'Class'} · {new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
+                            weekday: 'short', day: 'numeric', month: 'short',
+                          })}
+                        </Text>
+                      </View>
+                    ))}
+                    {(paymentHistory ?? []).length > 0 && (
+                      <>
+                        <Text style={[styles.expandedHeading, { marginTop: 16 }]}>Payments Recorded</Text>
+                        {(paymentHistory ?? []).map((p) => (
+                          <View key={p.id} style={styles.historyRow}>
+                            <View style={styles.owedRowTop}>
+                              <Text style={styles.historyClass}>
+                                {p.note ?? 'Cash received'}
+                              </Text>
+                              <Text style={styles.paymentAmount}>−{formatGBP(p.amount)}</Text>
+                            </View>
+                            <Text style={styles.historyDate}>
+                              {new Date(p.recorded_at).toLocaleDateString('en-GB', {
+                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                              })}
+                              {p.recorded_by_name ? ` · by ${p.recorded_by_name}` : ''}
+                            </Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+
+                    <Text style={[styles.expandedHeading, { marginTop: 16 }]}>Late Cancellation History</Text>
+                    {historyLoading && <ActivityIndicator color={COLORS.accent} style={{ marginTop: 8 }} />}
+                    {!historyLoading && (history ?? []).length === 0 && (
+                      <Text style={styles.noHistory}>No late cancellations recorded.</Text>
+                    )}
+                    {!historyLoading && (history ?? []).map((h) => (
+                      <View key={h.id} style={styles.historyRow}>
+                        <Text style={styles.historyClass}>{h.class_name}</Text>
+                        <Text style={styles.historyDate}>
+                          {new Date(h.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
+                            weekday: 'short', day: 'numeric', month: 'short',
+                          })} · {h.session_start_time.slice(0, 5)}
+                        </Text>
+                        <Text style={styles.historyCancelled}>
+                          Cancelled {new Date(h.cancelled_at).toLocaleDateString('en-GB', {
+                            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                          })}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </Card>
+            </TouchableOpacity>
+          );
+        }}
+        ListEmptyComponent={
+          !isLoading ? (
+            <Text style={styles.emptyText}>No users found.</Text>
+          ) : null
+        }
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+      />
+
+      <SlideUpModal
+        visible={!!recordingPaymentFor}
+        onDismiss={() => {
+          setRecordingPaymentFor(null);
+          setPaymentAmount('');
+          setPaymentNote('');
+        }}
+      >
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Record Payment</Text>
+          {recordingPaymentFor && (
+            <Text style={styles.modalSubtitle}>
+              {recordingPaymentFor.full_name} · owes {formatGBP(recordingPaymentFor.owed_amount)}
+            </Text>
+          )}
+
+          <Text style={styles.fieldLabel}>Amount (£)</Text>
+          <TextInput
+            style={styles.input}
+            value={paymentAmount}
+            onChangeText={setPaymentAmount}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            placeholderTextColor={COLORS.grey[600]}
+          />
+
+          <Text style={styles.fieldLabel}>Note (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={paymentNote}
+            onChangeText={setPaymentNote}
+            placeholder="e.g. cash for last 2 sessions"
+            placeholderTextColor={COLORS.grey[600]}
+          />
+
+          <Button
+            variant="primary"
+            size="md"
+            onPress={handleSubmitPayment}
+            loading={recordPaymentMutation.isPending}
+          >
+            Record
+          </Button>
+        </View>
+      </SlideUpModal>
+    </>
   );
 }
 
@@ -652,12 +877,14 @@ const styles = StyleSheet.create({
   userInfo: { flex: 1 },
   userName: { color: COLORS.white, fontSize: 15, fontWeight: '700', marginBottom: 2 },
   userMeta: { color: COLORS.grey[400], fontSize: 13 },
+  userOwed: { color: COLORS.error, fontSize: 13, fontWeight: '700', marginTop: 4 },
   userRight: { alignItems: 'flex-end', gap: 4 },
   userCancelCount: { color: COLORS.warning, fontSize: 20, fontWeight: '800' },
   userCancelCountBlocked: { color: COLORS.error },
 
   expandedSection: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.grey[800] },
   expandedHeading: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  actionsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   unblockButton: { marginBottom: 12, alignSelf: 'flex-start' },
   noHistory: { color: COLORS.grey[600], fontSize: 13 },
 
@@ -665,4 +892,7 @@ const styles = StyleSheet.create({
   historyClass: { color: COLORS.white, fontSize: 14, fontWeight: '600', marginBottom: 2 },
   historyDate: { color: COLORS.grey[400], fontSize: 12 },
   historyCancelled: { color: COLORS.grey[600], fontSize: 11, marginTop: 2 },
+  owedRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  owedAmount: { color: COLORS.error, fontSize: 14, fontWeight: '700' },
+  paymentAmount: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
 });
