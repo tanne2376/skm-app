@@ -109,22 +109,15 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
-        {/* Session defaults (teachers + admins) */}
+        {/* 1-to-1 Sessions (teachers + admins) */}
         {isTeacherOrAdmin && (
           <Card>
             <Text style={styles.sectionTitle}>1-to-1 Sessions</Text>
             <View style={styles.adminLinks}>
               <SettingsRow label="Session Defaults" onPress={() => router.push('/(app)/settings/defaults')} />
-            </View>
-          </Card>
-        )}
-
-        {/* Admin tools */}
-        {role === 'admin' && (
-          <Card>
-            <Text style={styles.sectionTitle}>Admin</Text>
-            <View style={styles.adminLinks}>
-              <SettingsRow label="Manage Locations" onPress={() => router.push('/(app)/settings/locations')} />
+              {role === 'admin' && (
+                <SettingsRow label="Manage Locations" onPress={() => router.push('/(app)/settings/locations')} />
+              )}
             </View>
           </Card>
         )}
