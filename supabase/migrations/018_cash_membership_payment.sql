@@ -197,12 +197,16 @@ as $$
       and (session_date + end_time) < now()
   ),
   membership_owed as (
+    -- Excludes lapsed periods so an unconfirmed cash membership stops
+    -- accruing owed once its month has ended. Mirrors the (session_date
+    -- + end_time) < now() filter used for class/1-to-1 cash bookings.
     select coalesce(sum(membership_tier_price_pence(tier)), 0)::bigint as total
     from memberships
     where student_id = p_user_id
       and payment_method = 'cash'
       and payment_status = 'pending'
       and status in ('active', 'cancelling', 'past_due')
+      and current_period_end > now()
   ),
   paid_back as (
     select coalesce(sum(amount), 0)::bigint as total
@@ -239,7 +243,8 @@ set search_path = public
 as $$
 begin
   if auth.uid() != p_user_id and get_user_role() != 'admin' then
-    return;
+    raise exception 'Not authorised to view unconfirmed cash sessions for this user.'
+      using errcode = '42501';
   end if;
 
   return query
@@ -290,6 +295,7 @@ begin
     and m.payment_method = 'cash'
     and m.payment_status = 'pending'
     and m.status in ('active', 'cancelling', 'past_due')
+    and m.current_period_end > now()
 
   order by session_date desc;
 end;

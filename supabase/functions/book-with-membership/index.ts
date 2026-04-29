@@ -39,7 +39,14 @@ Deno.serve(async (req) => {
 
   // Cash memberships become unusable once the 72-hour grace expires unconfirmed
   if (membership.payment_method === 'cash' && membership.payment_status === 'pending') {
-    const { data: graceExpired } = await adminClient.rpc('membership_cash_grace_expired', { p_membership_id: membership_id });
+    const { data: graceExpired, error: graceError } = await adminClient.rpc(
+      'membership_cash_grace_expired',
+      { p_membership_id: membership_id },
+    );
+    if (graceError) {
+      console.error('membership_cash_grace_expired failed:', graceError);
+      return errorResponse('Failed to check membership status.', 500);
+    }
     if (graceExpired) {
       return errorResponse('Cash payment must be confirmed by a class leader to keep using your membership.', 403);
     }
