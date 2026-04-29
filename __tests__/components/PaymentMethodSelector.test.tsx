@@ -10,10 +10,16 @@ const unlimitedMembership: MembershipWithUsage = {
   stripe_subscription_id: 'sub_xxx',
   stripe_price_id: 'price_xxx',
   status: 'active',
+  payment_method: 'stripe',
+  payment_status: 'paid',
+  cash_confirmed_at: null,
+  cash_confirmed_by: null,
   current_period_start: '2026-03-01T00:00:00Z',
   current_period_end: '2026-04-01T00:00:00Z',
   created_at: '2026-03-01T00:00:00Z',
   weekly_usage_count: 5,
+  cash_grace_expires_at: null,
+  cash_grace_expired: false,
 };
 
 const twoPerWeekMembership: MembershipWithUsage = {

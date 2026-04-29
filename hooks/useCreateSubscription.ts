@@ -58,6 +58,23 @@ export function useCreateSubscription() {
   });
 }
 
+export function useCreateCashMembership() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tier: MembershipTier) => {
+      const { error } = await supabase.rpc('create_cash_membership', { p_tier: tier });
+      if (error) throw new Error(error.message ?? 'Could not create cash membership.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
+    },
+    onError: (error: Error) => {
+      Alert.alert('Could not start membership', error.message);
+    },
+  });
+}
+
 export function useCancelSubscription() {
   const queryClient = useQueryClient();
 
