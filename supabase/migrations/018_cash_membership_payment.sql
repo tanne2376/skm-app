@@ -170,56 +170,65 @@ grant execute on function confirm_cash_membership(uuid) to authenticated;
 
 create or replace function get_user_owed_amount(p_user_id uuid)
 returns integer
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
-  with class_owed as (
-    select coalesce(sum(coalesce(cs.price, ct.price)), 0)::bigint as total
-    from bookings b
-    join class_sessions cs on cs.id = b.session_id
-    join class_templates ct on ct.id = cs.template_id
-    where b.student_id = p_user_id
-      and b.payment_method = 'cash'
-      and b.payment_status = 'pending'
-      and b.status = 'confirmed'
-      and cs.is_cancelled = false
-      and (cs.session_date + cs.end_time) < now()
-  ),
-  oto_owed as (
-    select coalesce(sum(price), 0)::bigint as total
-    from one_to_ones
-    where student_id = p_user_id
-      and payment_method = 'cash'
-      and payment_status = 'pending'
-      and status in ('booked', 'completed')
-      and (session_date + end_time) < now()
-  ),
-  membership_owed as (
-    -- Excludes lapsed periods so an unconfirmed cash membership stops
-    -- accruing owed once its month has ended. Mirrors the (session_date
-    -- + end_time) < now() filter used for class/1-to-1 cash bookings.
-    select coalesce(sum(membership_tier_price_pence(tier)), 0)::bigint as total
-    from memberships
-    where student_id = p_user_id
-      and payment_method = 'cash'
-      and payment_status = 'pending'
-      and status in ('active', 'cancelling', 'past_due')
-      and current_period_end > now()
-  ),
-  paid_back as (
-    select coalesce(sum(amount), 0)::bigint as total
-    from payments_received
-    where user_id = p_user_id
-  )
-  select greatest(
-    (select total from class_owed)
-    + (select total from oto_owed)
-    + (select total from membership_owed)
-    - (select total from paid_back),
-    0
-  )::integer;
+begin
+  if auth.uid() != p_user_id and get_user_role() != 'admin' then
+    raise exception 'Not authorised to view owed amount for this user.'
+      using errcode = '42501';
+  end if;
+
+  return (
+    with class_owed as (
+      select coalesce(sum(coalesce(cs.price, ct.price)), 0)::bigint as total
+      from bookings b
+      join class_sessions cs on cs.id = b.session_id
+      join class_templates ct on ct.id = cs.template_id
+      where b.student_id = p_user_id
+        and b.payment_method = 'cash'
+        and b.payment_status = 'pending'
+        and b.status = 'confirmed'
+        and cs.is_cancelled = false
+        and (cs.session_date + cs.end_time) < now()
+    ),
+    oto_owed as (
+      select coalesce(sum(price), 0)::bigint as total
+      from one_to_ones
+      where student_id = p_user_id
+        and payment_method = 'cash'
+        and payment_status = 'pending'
+        and status in ('booked', 'completed')
+        and (session_date + end_time) < now()
+    ),
+    membership_owed as (
+      -- Excludes lapsed periods so an unconfirmed cash membership stops
+      -- accruing owed once its month has ended. Mirrors the (session_date
+      -- + end_time) < now() filter used for class/1-to-1 cash bookings.
+      select coalesce(sum(membership_tier_price_pence(tier)), 0)::bigint as total
+      from memberships
+      where student_id = p_user_id
+        and payment_method = 'cash'
+        and payment_status = 'pending'
+        and status in ('active', 'cancelling', 'past_due')
+        and current_period_end > now()
+    ),
+    paid_back as (
+      select coalesce(sum(amount), 0)::bigint as total
+      from payments_received
+      where user_id = p_user_id
+    )
+    select greatest(
+      (select total from class_owed)
+      + (select total from oto_owed)
+      + (select total from membership_owed)
+      - (select total from paid_back),
+      0
+    )::integer
+  );
+end;
 $$;
 
 -- ============================================================
