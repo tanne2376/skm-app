@@ -33,6 +33,13 @@ alter table memberships add constraint memberships_cash_confirmation_consistent 
   (cash_confirmed_at is null) = (cash_confirmed_by is null)
 );
 
+-- Enforce one active membership per student at the database level.
+-- Without this, two concurrent calls to create_cash_membership could both
+-- pass the existence check and insert duplicate active memberships.
+create unique index memberships_one_active_per_student
+  on memberships (student_id)
+  where status in ('active', 'cancelling', 'past_due');
+
 -- ============================================================
 -- TIER PRICING
 -- ============================================================
@@ -106,16 +113,22 @@ begin
     raise exception 'You already have an active membership.';
   end if;
 
-  insert into memberships (
-    student_id, tier, status,
-    payment_method, payment_status,
-    current_period_start, current_period_end
-  ) values (
-    v_user_id, p_tier, 'active',
-    'cash', 'pending',
-    v_period_start, v_period_end
-  )
-  returning id into v_membership_id;
+  begin
+    insert into memberships (
+      student_id, tier, status,
+      payment_method, payment_status,
+      current_period_start, current_period_end
+    ) values (
+      v_user_id, p_tier, 'active',
+      'cash', 'pending',
+      v_period_start, v_period_end
+    )
+    returning id into v_membership_id;
+  exception when unique_violation then
+    -- memberships_one_active_per_student guards against a concurrent
+    -- second insert slipping past the existence check above.
+    raise exception 'You already have an active membership.';
+  end;
 
   return v_membership_id;
 end;
