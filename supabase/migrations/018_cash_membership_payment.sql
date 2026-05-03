@@ -28,9 +28,13 @@ alter table memberships alter column payment_method set default 'stripe';
 alter table memberships alter column payment_status set not null;
 alter table memberships alter column payment_status set default 'paid';
 
--- Cash memberships must have a confirmation pair set together.
+-- Confirmation timestamp must accompany a confirmer reference at write time.
+-- One-way implication, not equality, so the FK's `on delete set null` can
+-- clear cash_confirmed_by when a confirming profile is deleted while we keep
+-- the historical timestamp. Mirrors how payments_received.recorded_by handles
+-- the same case.
 alter table memberships add constraint memberships_cash_confirmation_consistent check (
-  (cash_confirmed_at is null) = (cash_confirmed_by is null)
+  cash_confirmed_by is null or cash_confirmed_at is not null
 );
 
 -- Enforce one active membership per student at the database level.
