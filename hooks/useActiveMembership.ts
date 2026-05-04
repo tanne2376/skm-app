@@ -35,7 +35,21 @@ export function useActiveMembership() {
         weeklyUsageCount = count ?? 0;
       }
 
-      return { ...membership, weekly_usage_count: weeklyUsageCount } as MembershipWithUsage;
+      let cashGraceExpiresAt: string | null = null;
+      let cashGraceExpired = false;
+      if (membership.payment_method === 'cash' && membership.payment_status === 'pending') {
+        const created = new Date(membership.created_at);
+        const expiry = new Date(created.getTime() + 72 * 60 * 60 * 1000);
+        cashGraceExpiresAt = expiry.toISOString();
+        cashGraceExpired = expiry.getTime() <= Date.now();
+      }
+
+      return {
+        ...membership,
+        weekly_usage_count: weeklyUsageCount,
+        cash_grace_expires_at: cashGraceExpiresAt,
+        cash_grace_expired: cashGraceExpired,
+      } as MembershipWithUsage;
     },
   });
 }

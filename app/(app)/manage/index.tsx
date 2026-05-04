@@ -44,7 +44,7 @@ interface LateCancellationHistoryItem {
 }
 
 interface UnconfirmedCashSessionItem {
-  source_type: 'class' | 'one_to_one';
+  source_type: 'class' | 'one_to_one' | 'membership';
   source_id: string;
   description: string;
   session_date: string;
@@ -575,6 +575,29 @@ function UsersTab() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
+  const confirmCashMembershipMutation = useMutation({
+    mutationFn: async (membershipId: string) => {
+      const { error } = await supabase.rpc('confirm_cash_membership', { p_membership_id: membershipId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_users_late_cancellations'] });
+      queryClient.invalidateQueries({ queryKey: ['unconfirmed_cash_sessions', expandedUserId] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  function handleConfirmCashMembership(item: UnconfirmedCashSessionItem, userName: string) {
+    Alert.alert(
+      'Confirm Cash Payment',
+      `Mark ${userName}'s ${item.description.toLowerCase()} (${formatGBP(item.amount)}) as paid in cash?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => confirmCashMembershipMutation.mutate(item.source_id) },
+      ],
+    );
+  }
+
   function handleUnblock(user: UserWithLateCancellations) {
     Alert.alert(
       'Unblock User',
@@ -725,10 +748,21 @@ function UsersTab() {
                           <Text style={styles.owedAmount}>{formatGBP(b.amount)}</Text>
                         </View>
                         <Text style={styles.historyDate}>
-                          {b.source_type === 'one_to_one' ? '1-to-1' : 'Class'} · {new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
-                            weekday: 'short', day: 'numeric', month: 'short',
-                          })}
+                          {b.source_type === 'membership'
+                            ? `Membership · started ${new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+                            : `${b.source_type === 'one_to_one' ? '1-to-1' : 'Class'} · ${new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`}
                         </Text>
+                        {b.source_type === 'membership' && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onPress={() => handleConfirmCashMembership(b, item.full_name)}
+                            loading={confirmCashMembershipMutation.isPending}
+                            style={styles.confirmCashButton}
+                          >
+                            Confirm Cash Received
+                          </Button>
+                        )}
                       </View>
                     ))}
                     {(paymentHistory ?? []).length > 0 && (
@@ -917,4 +951,5 @@ const styles = StyleSheet.create({
   owedRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   owedAmount: { color: COLORS.error, fontSize: 14, fontWeight: '700' },
   paymentAmount: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
+  confirmCashButton: { alignSelf: 'flex-start', marginTop: 8 },
 });

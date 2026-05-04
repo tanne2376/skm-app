@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MembershipStatusBadge } from '@/components/ui/Badge';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
-import { useCreateSubscription, useCancelSubscription, useResumeSubscription } from '@/hooks/useCreateSubscription';
+import { useCreateSubscription, useCreateCashMembership, useCancelSubscription, useResumeSubscription } from '@/hooks/useCreateSubscription';
 import { formatGBP } from '@/lib/stripe';
 import { MembershipTier } from '@/types';
 
@@ -15,9 +15,10 @@ export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
   const { data: membership, isLoading, refetch } = useActiveMembership();
   const createSubscription = useCreateSubscription();
+  const createCashMembership = useCreateCashMembership();
   const cancelSubscription = useCancelSubscription();
   const resumeSubscription = useResumeSubscription();
-  const [selecting, setSelecting] = useState<MembershipTier | null>(null);
+  const [selecting, setSelecting] = useState<{ tier: MembershipTier; method: 'stripe' | 'cash' } | null>(null);
 
   function handleSubscribe(tier: MembershipTier) {
     Alert.alert(
@@ -28,8 +29,28 @@ export default function MembershipScreen() {
         {
           text: 'Confirm',
           onPress: () => {
-            setSelecting(tier);
+            setSelecting({ tier, method: 'stripe' });
             createSubscription.mutate(tier, {
+              onSettled: () => setSelecting(null),
+              onSuccess: () => refetch(),
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function handlePayCash(tier: MembershipTier) {
+    Alert.alert(
+      `Pay with Cash — ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'}`,
+      `Your membership activates immediately. You have 72 hours to pay ${formatGBP(MEMBERSHIP_PRICES_PENCE[tier])} in cash to a class leader, or your membership will be paused until paid. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Activate',
+          onPress: () => {
+            setSelecting({ tier, method: 'cash' });
+            createCashMembership.mutate(tier, {
               onSettled: () => setSelecting(null),
               onSuccess: () => refetch(),
             });
@@ -74,12 +95,30 @@ export default function MembershipScreen() {
                   })}. You can still use it until then.
                 </Text>
               </View>
+            ) : membership.payment_method === 'cash' ? (
+              <Text style={styles.renewalDate}>
+                Active until {new Date(membership.current_period_end).toLocaleDateString('en-GB', {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                })} (cash, does not auto-renew)
+              </Text>
             ) : (
               <Text style={styles.renewalDate}>
                 Renews {new Date(membership.current_period_end).toLocaleDateString('en-GB', {
                   day: 'numeric', month: 'long', year: 'numeric',
                 })}
               </Text>
+            )}
+
+            {membership.payment_method === 'cash' && membership.payment_status === 'pending' && (
+              <View style={membership.cash_grace_expired ? styles.warningBanner : styles.cashPendingBanner}>
+                <Text style={membership.cash_grace_expired ? styles.warningText : styles.cashPendingText}>
+                  {membership.cash_grace_expired
+                    ? `Cash payment overdue — your membership is paused until a class leader confirms payment of ${formatGBP(MEMBERSHIP_PRICES_PENCE[membership.tier])}.`
+                    : `Cash pending — pay ${formatGBP(MEMBERSHIP_PRICES_PENCE[membership.tier])} to a class leader by ${new Date(membership.cash_grace_expires_at!).toLocaleString('en-GB', {
+                        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                      })}.`}
+                </Text>
+              </View>
             )}
 
             {membership.status === 'past_due' && (
@@ -140,8 +179,10 @@ export default function MembershipScreen() {
                 'Any class in the timetable',
                 'Cancel anytime',
               ]}
-              onPress={() => handleSubscribe('two_per_week')}
-              loading={selecting === 'two_per_week'}
+              onSubscribe={() => handleSubscribe('two_per_week')}
+              onPayCash={() => handlePayCash('two_per_week')}
+              subscribeLoading={selecting?.tier === 'two_per_week' && selecting.method === 'stripe'}
+              cashLoading={selecting?.tier === 'two_per_week' && selecting.method === 'cash'}
               disabled={!!selecting}
             />
 
@@ -153,8 +194,10 @@ export default function MembershipScreen() {
                 'Any class in the timetable',
                 'Cancel anytime',
               ]}
-              onPress={() => handleSubscribe('unlimited')}
-              loading={selecting === 'unlimited'}
+              onSubscribe={() => handleSubscribe('unlimited')}
+              onPayCash={() => handlePayCash('unlimited')}
+              subscribeLoading={selecting?.tier === 'unlimited' && selecting.method === 'stripe'}
+              cashLoading={selecting?.tier === 'unlimited' && selecting.method === 'cash'}
               disabled={!!selecting}
             />
           </>
@@ -173,16 +216,20 @@ function TierCard({
   price,
   perks,
   highlighted = false,
-  onPress,
-  loading,
+  onSubscribe,
+  onPayCash,
+  subscribeLoading,
+  cashLoading,
   disabled,
 }: {
   title: string;
   price: number;
   perks: string[];
   highlighted?: boolean;
-  onPress: () => void;
-  loading: boolean;
+  onSubscribe: () => void;
+  onPayCash: () => void;
+  subscribeLoading: boolean;
+  cashLoading: boolean;
   disabled: boolean;
 }) {
   return (
@@ -202,12 +249,21 @@ function TierCard({
       <Button
         variant={highlighted ? 'primary' : 'secondary'}
         size="md"
-        onPress={onPress}
-        loading={loading}
+        onPress={onSubscribe}
+        loading={subscribeLoading}
         disabled={disabled}
         style={styles.tierButton}
       >
         Subscribe
+      </Button>
+      <Button
+        variant="ghost"
+        size="md"
+        onPress={onPayCash}
+        loading={cashLoading}
+        disabled={disabled}
+      >
+        Pay with Cash
       </Button>
     </Card>
   );
@@ -227,6 +283,8 @@ const styles = StyleSheet.create({
   renewalDate: { color: COLORS.grey[600], fontSize: 12 },
   warningBanner: { backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
   warningText: { color: COLORS.error, fontSize: 13 },
+  cashPendingBanner: { backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)' },
+  cashPendingText: { color: COLORS.warning, fontSize: 13 },
   cancelButton: { alignSelf: 'flex-start', marginTop: 8 },
   sectionTitle: { color: COLORS.white, fontSize: 20, fontWeight: '700' },
   tierCard: { gap: 10 },

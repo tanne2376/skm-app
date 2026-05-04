@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   // Find user's cancelling membership
   const { data: membership, error } = await adminClient
     .from('memberships')
-    .select('id, stripe_subscription_id')
+    .select('id, stripe_subscription_id, payment_method')
     .eq('student_id', user.id)
     .eq('status', 'cancelling')
     .maybeSingle();
@@ -24,14 +24,16 @@ Deno.serve(async (req) => {
   if (error) return errorResponse('Failed to look up membership.', 500);
   if (!membership) return errorResponse('No cancelling membership found.', 404);
 
-  // Undo the pending cancellation
-  try {
-    await stripe.subscriptions.update(membership.stripe_subscription_id, {
-      cancel_at_period_end: false,
-    });
-  } catch (stripeError) {
-    console.error('Stripe update failed:', stripeError);
-    return errorResponse('Failed to update subscription.', 500);
+  // Cash memberships have no Stripe subscription to undo — just flip the status back.
+  if (membership.payment_method !== 'cash') {
+    try {
+      await stripe.subscriptions.update(membership.stripe_subscription_id, {
+        cancel_at_period_end: false,
+      });
+    } catch (stripeError) {
+      console.error('Stripe update failed:', stripeError);
+      return errorResponse('Failed to update subscription.', 500);
+    }
   }
 
   // Restore active status

@@ -79,13 +79,19 @@ export interface Booking {
   cancelled_at: string | null;
 }
 
+export type MembershipPaymentMethod = 'stripe' | 'cash';
+
 export interface Membership {
   id: string;
   student_id: string;
   tier: MembershipTier;
   stripe_subscription_id: string | null;
-  stripe_price_id: string;
+  stripe_price_id: string | null;
   status: MembershipStatus;
+  payment_method: MembershipPaymentMethod;
+  payment_status: PaymentStatus;
+  cash_confirmed_at: string | null;
+  cash_confirmed_by: string | null;
   current_period_start: string;
   current_period_end: string;
   created_at: string;
@@ -144,4 +150,6 @@ export interface OneToOneWithDetails extends OneToOne {
 
 export interface MembershipWithUsage extends Membership {
   weekly_usage_count: number; // for two_per_week tier
+  cash_grace_expires_at: string | null; // ISO; only set for cash/pending memberships
+  cash_grace_expired: boolean; // derived: cash + pending + past grace_expires_at
 }

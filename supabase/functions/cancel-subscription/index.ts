@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   // Find user's active membership
   const { data: membership, error } = await adminClient
     .from('memberships')
-    .select('id, stripe_subscription_id')
+    .select('id, stripe_subscription_id, payment_method')
     .eq('student_id', user.id)
     .eq('status', 'active')
     .maybeSingle();
@@ -24,14 +24,18 @@ Deno.serve(async (req) => {
   if (error) return errorResponse('Failed to look up membership.', 500);
   if (!membership) return errorResponse('No active membership found.', 404);
 
-  // Mark the subscription to cancel at the end of the current billing period
-  try {
-    await stripe.subscriptions.update(membership.stripe_subscription_id, {
-      cancel_at_period_end: true,
-    });
-  } catch (stripeError) {
-    console.error('Stripe update failed:', stripeError);
-    return errorResponse('Failed to update subscription.', 500);
+  // Cash memberships have no Stripe subscription — cancel immediately.
+  // The billing period already ends on the 1st of next month, so we
+  // mark as 'cancelling' and let it expire naturally.
+  if (membership.payment_method !== 'cash') {
+    try {
+      await stripe.subscriptions.update(membership.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
+    } catch (stripeError) {
+      console.error('Stripe update failed:', stripeError);
+      return errorResponse('Failed to update subscription.', 500);
+    }
   }
 
   // Set status to 'cancelling' so the UI shows it won't renew
