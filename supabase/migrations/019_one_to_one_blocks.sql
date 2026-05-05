@@ -28,7 +28,7 @@ create type block_payment_method as enum ('stripe', 'cash');
 -- ============================================================
 
 create table block_templates (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   name text not null,
   sessions_count smallint not null check (sessions_count > 0),
   -- null validity_days = block never expires
@@ -45,7 +45,7 @@ create index block_templates_active_idx on block_templates(is_active);
 -- ============================================================
 
 create table blocks (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   student_id uuid not null references profiles(id) on delete restrict,
   template_id uuid not null references block_templates(id) on delete restrict,
 
