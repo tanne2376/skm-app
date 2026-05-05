@@ -44,7 +44,7 @@ interface LateCancellationHistoryItem {
 }
 
 interface UnconfirmedCashSessionItem {
-  source_type: 'class' | 'one_to_one' | 'membership';
+  source_type: 'class' | 'one_to_one' | 'membership' | 'block';
   source_id: string;
   description: string;
   session_date: string;
@@ -575,10 +575,17 @@ function UsersTab() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
-  const confirmCashMembershipMutation = useMutation({
-    mutationFn: async (membershipId: string) => {
-      const { error } = await supabase.rpc('confirm_cash_membership', { p_membership_id: membershipId });
-      if (error) throw error;
+  const confirmCashItemMutation = useMutation({
+    mutationFn: async (item: UnconfirmedCashSessionItem) => {
+      if (item.source_type === 'membership') {
+        const { error } = await supabase.rpc('confirm_cash_membership', { p_membership_id: item.source_id });
+        if (error) throw error;
+      } else if (item.source_type === 'block') {
+        const { error } = await supabase.rpc('confirm_cash_block_payment', { p_block_id: item.source_id });
+        if (error) throw error;
+      } else {
+        throw new Error(`Cash confirmation not supported for "${item.source_type}".`);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin_users_late_cancellations'] });
@@ -587,13 +594,13 @@ function UsersTab() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
-  function handleConfirmCashMembership(item: UnconfirmedCashSessionItem, userName: string) {
+  function handleConfirmCashItem(item: UnconfirmedCashSessionItem, userName: string) {
     Alert.alert(
       'Confirm Cash Payment',
       `Mark ${userName}'s ${item.description.toLowerCase()} (${formatGBP(item.amount)}) as paid in cash?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => confirmCashMembershipMutation.mutate(item.source_id) },
+        { text: 'Confirm', onPress: () => confirmCashItemMutation.mutate(item) },
       ],
     );
   }
@@ -750,14 +757,16 @@ function UsersTab() {
                         <Text style={styles.historyDate}>
                           {b.source_type === 'membership'
                             ? `Membership · started ${new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-                            : `${b.source_type === 'one_to_one' ? '1-to-1' : 'Class'} · ${new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`}
+                            : b.source_type === 'block'
+                              ? `Block · purchased ${new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+                              : `${b.source_type === 'one_to_one' ? '1-to-1' : 'Class'} · ${new Date(b.session_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`}
                         </Text>
-                        {b.source_type === 'membership' && (
+                        {(b.source_type === 'membership' || b.source_type === 'block') && (
                           <Button
                             variant="secondary"
                             size="sm"
-                            onPress={() => handleConfirmCashMembership(b, item.full_name)}
-                            loading={confirmCashMembershipMutation.isPending}
+                            onPress={() => handleConfirmCashItem(b, item.full_name)}
+                            loading={confirmCashItemMutation.isPending}
                             style={styles.confirmCashButton}
                           >
                             Confirm Cash Received

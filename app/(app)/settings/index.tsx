@@ -116,7 +116,10 @@ export default function SettingsScreen() {
             <View style={styles.adminLinks}>
               <SettingsRow label="Session Defaults" onPress={() => router.push('/(app)/settings/defaults')} />
               {role === 'admin' && (
-                <SettingsRow label="Manage Locations" onPress={() => router.push('/(app)/settings/locations')} />
+                <>
+                  <SettingsRow label="Manage Locations" onPress={() => router.push('/(app)/settings/locations')} />
+                  <SettingsRow label="Manage Blocks" onPress={() => router.push('/(app)/settings/blocks')} />
+                </>
               )}
             </View>
           </Card>

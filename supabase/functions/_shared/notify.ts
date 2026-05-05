@@ -16,7 +16,8 @@ type NotificationType =
   | 'one_to_one_booked'
   | 'class_full'
   | 'class_time_changed'
-  | 'membership_renewal';
+  | 'membership_renewal'
+  | 'block_activated';
 
 interface NotifyParams {
   adminClient: SupabaseClient;

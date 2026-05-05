@@ -93,6 +93,28 @@ Deno.serve(async (req) => {
             });
           }
         }
+      } else if (booking_type === 'block_purchase') {
+        const { error: actErr } = await adminClient.rpc('activate_block_from_stripe', {
+          p_payment_intent_id: obj.id,
+        });
+        if (actErr) throw actErr;
+
+        const { data: block } = await adminClient
+          .from('blocks')
+          .select('student_id, sessions_total, template_name_snapshot')
+          .eq('stripe_payment_intent_id', obj.id)
+          .single();
+
+        if (block?.student_id) {
+          await notify({
+            adminClient,
+            userId: block.student_id,
+            type: 'block_activated',
+            title: 'Block activated',
+            body: `Your ${block.template_name_snapshot} (${block.sessions_total} sessions) is ready to use.`,
+            data: { screen: 'membership' },
+          });
+        }
       }
     } catch (err: any) {
       return errResp(eventType, err);
@@ -114,6 +136,10 @@ Deno.serve(async (req) => {
           .from('one_to_ones')
           .update({ status: 'available', student_id: null, payment_status: null, payment_method: null, stripe_payment_intent_id: null })
           .eq('stripe_payment_intent_id', obj.id);
+      } else if (booking_type === 'block_purchase') {
+        await adminClient.rpc('activate_block_failed_from_stripe', {
+          p_payment_intent_id: obj.id,
+        });
       }
     } catch (err: any) {
       return errResp(eventType, err);
