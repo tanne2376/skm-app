@@ -1,9 +1,11 @@
+// JWT: ✅
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { notify } from '../_shared/notify.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
+  if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return errorResponse('Unauthorized', 401);
@@ -11,13 +13,21 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const { one_to_one_id } = await req.json() as { one_to_one_id: string };
+  let body: { one_to_one_id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse('Invalid JSON body.', 400);
+  }
+  const one_to_one_id = body.one_to_one_id;
   if (!one_to_one_id) return errorResponse('one_to_one_id is required.', 400);
 
   const adminClient = createAdminClient();
 
+  // RPC runs as service-role so auth.uid() is NULL — pass user_id explicitly.
   const { error } = await adminClient.rpc('book_one_to_one_with_block', {
     p_one_to_one_id: one_to_one_id,
+    p_user_id: user.id,
   });
   if (error) {
     const code = error.code === '42501' ? 403 : 400;

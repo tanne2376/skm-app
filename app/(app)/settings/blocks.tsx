@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, Alert, TouchableOpacity, Switch } from 'react-native';
+import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { formatGBP } from '@/lib/stripe';
 import { BlockTemplate } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
 import {
   useBlockTemplates,
   useCreateBlockTemplate,
@@ -32,6 +34,8 @@ function parsePositiveInt(value: string): number | null {
 
 export default function BlocksScreen() {
   const insets = useSafeAreaInsets();
+  const { role, isLoading: authLoading } = useAuth();
+
   const { data: templates, isLoading, refetch } = useBlockTemplates({ activeOnly: false });
 
   const createMutation = useCreateBlockTemplate();
@@ -44,6 +48,14 @@ export default function BlocksScreen() {
   const [neverExpires, setNeverExpires] = useState(false);
   const [validityDays, setValidityDays] = useState('');
   const [price, setPrice] = useState('');
+
+  // Server still authoritative via the "Admins manage block templates" RLS
+  // policy on block_templates; this just keeps non-admins from rendering
+  // the CRUD UI if they deep-link past the settings menu. Placed after all
+  // hooks to keep hook order stable across the auth-loading transition.
+  if (!authLoading && role !== 'admin') {
+    return <Redirect href="/(app)/settings" />;
+  }
 
   function openAdd() {
     setName('');

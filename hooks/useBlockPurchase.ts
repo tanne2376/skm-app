@@ -7,14 +7,18 @@ import { useAuth } from './useAuth';
 async function waitForActiveBlock(blockId: string, maxAttempts = 8): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 1000));
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('blocks')
       .select('id')
       .eq('id', blockId)
       .eq('status', 'active')
       .maybeSingle();
+    if (error) {
+      throw new Error(`Could not confirm block activation: ${error.message}`);
+    }
     if (data) return;
   }
+  throw new Error('Block did not activate in time. Check your purchases — payment may still complete shortly.');
 }
 
 export function useCreateCashBlockPurchase() {
@@ -64,7 +68,12 @@ export function useCreateStripeBlockPurchase() {
       });
 
       const result = await openPaymentSheet();
-      if (!result.success) throw new Error(result.error ?? 'Payment cancelled.');
+      if (!result.success) {
+        // Server has already created the pending_stripe row; release it so
+        // the 15-minute pending guard doesn't block a retry.
+        await supabase.rpc('abandon_pending_stripe_block', { p_block_id: data!.block_id });
+        throw new Error(result.error ?? 'Payment cancelled.');
+      }
 
       // Wait for the webhook to flip the row to active before returning.
       if (session?.user.id) {

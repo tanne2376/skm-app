@@ -6,7 +6,13 @@ export type MembershipTier = 'two_per_week' | 'unlimited';
 export type MembershipStatus = 'active' | 'cancelling' | 'cancelled' | 'past_due';
 export type OneToOneStatus = 'available' | 'booked' | 'cancelled' | 'completed';
 export type LocationType = 'predefined' | 'custom';
-export type BlockStatus = 'pending_stripe' | 'active' | 'exhausted' | 'expired' | 'cancelled';
+export type BlockStatus =
+  | 'pending_stripe'
+  | 'active'
+  | 'exhausted'
+  | 'expired'
+  | 'cancelled'
+  | 'needs_review';
 export type BlockPaymentMethod = 'stripe' | 'cash';
 
 export type NotificationType =

@@ -39,3 +39,12 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# graphify knowledge graph (regenerated locally; not source of truth)
+graphify-out/
+
+# supabase CLI temp/cache
+supabase/.temp/
+
+# claude code per-user settings
+.claude/settings.local.json

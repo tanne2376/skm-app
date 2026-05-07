@@ -111,18 +111,21 @@ export default function MembershipScreen() {
   }
 
   function handleCancelBlock(b: BlockWithDerived) {
-    Alert.alert(
-      'Cancel Block',
-      'This frees the slot so you can buy a new block. No refund.',
-      [
-        { text: 'Keep Block', style: 'cancel' },
-        {
-          text: 'Cancel',
-          style: 'destructive',
-          onPress: () => cancelBlock.mutate(b.id, { onSuccess: () => refetchBlock() }),
-        },
-      ],
-    );
+    const hasSessionsRemaining =
+      b.sessions_remaining > 0 && !b.is_expired && !b.cash_grace_expired;
+    const message = hasSessionsRemaining
+      ? `Cancelling forfeits your ${b.sessions_remaining} remaining session${
+          b.sessions_remaining === 1 ? '' : 's'
+        }. No refund. You'll be able to buy a new block straight away.`
+      : 'This frees the slot so you can buy a new block. No refund.';
+    Alert.alert('Cancel Block', message, [
+      { text: 'Keep Block', style: 'cancel' },
+      {
+        text: 'Cancel Block',
+        style: 'destructive',
+        onPress: () => cancelBlock.mutate(b.id, { onSuccess: () => refetchBlock() }),
+      },
+    ]);
   }
 
   return (
@@ -310,11 +313,6 @@ function ActiveBlockCard({
   onCancel: () => void;
   cancelLoading: boolean;
 }) {
-  const canCancel =
-    block.sessions_remaining === 0 ||
-    block.is_expired ||
-    block.cash_grace_expired;
-
   return (
     <Card style={styles.activeCard}>
       <View style={styles.row}>
@@ -364,17 +362,15 @@ function ActiveBlockCard({
         </View>
       )}
 
-      {canCancel && (
-        <Button
-          variant="ghost"
-          size="sm"
-          style={styles.cancelButton}
-          onPress={onCancel}
-          loading={cancelLoading}
-        >
-          Cancel Block
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        style={styles.cancelButton}
+        onPress={onCancel}
+        loading={cancelLoading}
+      >
+        Cancel Block
+      </Button>
     </Card>
   );
 }
