@@ -9,9 +9,9 @@
 -- ============================================================
 
 -- Service-role only: called from edge functions with explicit user_id.
-revoke execute on function create_cash_block_purchase(uuid, uuid) from anon, public;
-revoke execute on function create_pending_stripe_block_purchase(uuid, uuid) from anon, public;
-revoke execute on function book_one_to_one_with_block(uuid, uuid) from anon, public;
+revoke execute on function create_cash_block_purchase(uuid, uuid) from anon, authenticated, public;
+revoke execute on function create_pending_stripe_block_purchase(uuid, uuid) from anon, authenticated, public;
+revoke execute on function book_one_to_one_with_block(uuid, uuid) from anon, authenticated, public;
 
 -- Service-role only: called from the Stripe webhook handler.
 revoke execute on function activate_block_from_stripe(text) from anon, authenticated, public;
