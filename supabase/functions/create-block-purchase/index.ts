@@ -48,7 +48,18 @@ Deno.serve(async (req) => {
   // From here on, any failure must roll back the pending block so the
   // 15-minute pending-purchase guard doesn't lock the student out.
   const rollback = async (reason: string, status = 500) => {
-    await adminClient.from('blocks').update({ status: 'cancelled' }).eq('id', blockId);
+    const { error: rollbackErr } = await adminClient
+      .from('blocks')
+      .update({ status: 'cancelled' })
+      .eq('id', blockId);
+    if (rollbackErr) {
+      // Log so we can detect blocks stuck in pending_stripe; the original
+      // error is still the user-facing failure reason.
+      console.error(
+        `[create-block-purchase] Rollback failed for block ${blockId}:`,
+        rollbackErr.message,
+      );
+    }
     return errorResponse(reason, status);
   };
 
@@ -79,15 +90,25 @@ Deno.serve(async (req) => {
     if (profile?.stripe_customer_id) {
       customerId = profile.stripe_customer_id;
     } else {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: { supabase_user_id: user.id },
-      });
+      // Idempotency key derived from user.id so a retried request finds the
+      // same Stripe customer instead of minting a duplicate.
+      const customer = await stripe.customers.create(
+        {
+          email: user.email,
+          metadata: { supabase_user_id: user.id },
+        },
+        { idempotencyKey: `customer:${user.id}` },
+      );
       customerId = customer.id;
-      await adminClient
+      const { error: linkProfileErr } = await adminClient
         .from('profiles')
         .update({ stripe_customer_id: customerId })
         .eq('id', user.id);
+      // If we can't persist the customer link, the next purchase attempt would
+      // create another Stripe customer — fail fast so the user retries cleanly.
+      if (linkProfileErr) {
+        return await rollback('Failed to link Stripe customer to profile', 500);
+      }
     }
 
     const ephemeralKey = await stripe.ephemeralKeys.create(
@@ -95,20 +116,25 @@ Deno.serve(async (req) => {
       { apiVersion: '2025-03-31.basil' },
     );
 
-    // 4. Create PaymentIntent and link to block
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: block.price_pence_snapshot,
-      currency: 'gbp',
-      customer: customerId,
-      description,
-      automatic_payment_methods: { enabled: true },
-      metadata: {
-        booking_type: 'block_purchase',
-        block_id: blockId,
-        template_id,
-        student_id: user.id,
+    // 4. Create PaymentIntent and link to block. Idempotency key keyed on the
+    // pending block id so a retry doesn't create a second PaymentIntent for
+    // the same purchase.
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: block.price_pence_snapshot,
+        currency: 'gbp',
+        customer: customerId,
+        description,
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          booking_type: 'block_purchase',
+          block_id: blockId,
+          template_id,
+          student_id: user.id,
+        },
       },
-    });
+      { idempotencyKey: `block_purchase:${blockId}` },
+    );
 
     const { error: linkError } = await adminClient.rpc('set_block_stripe_payment_intent', {
       p_block_id: blockId,

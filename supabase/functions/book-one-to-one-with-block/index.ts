@@ -34,28 +34,37 @@ Deno.serve(async (req) => {
     return errorResponse(error.message, code);
   }
 
-  // Notify the 1-to-1 creator that someone booked their session.
-  const { data: oto } = await adminClient
-    .from('one_to_ones')
-    .select('title, session_date, creator_id')
-    .eq('id', one_to_one_id)
-    .single();
-
-  if (oto?.creator_id && oto.creator_id !== user.id) {
-    const { data: studentProfile } = await adminClient
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
+  // Booking already committed by the RPC. Wrap the notification path so
+  // a push/profile lookup failure can't surface a 500 to the client and
+  // make a successful booking look like it failed.
+  try {
+    const { data: oto } = await adminClient
+      .from('one_to_ones')
+      .select('title, session_date, creator_id')
+      .eq('id', one_to_one_id)
       .single();
 
-    await notify({
-      adminClient,
-      userId: oto.creator_id,
-      type: 'one_to_one_booked',
-      title: '1-to-1 booked',
-      body: `${studentProfile?.full_name ?? 'A student'} booked "${oto.title}" on ${oto.session_date} using a block.`,
-      data: { oneToOneId: one_to_one_id },
-    });
+    if (oto?.creator_id && oto.creator_id !== user.id) {
+      const { data: studentProfile } = await adminClient
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+
+      await notify({
+        adminClient,
+        userId: oto.creator_id,
+        type: 'one_to_one_booked',
+        title: '1-to-1 booked',
+        body: `${studentProfile?.full_name ?? 'A student'} booked "${oto.title}" on ${oto.session_date} using a block.`,
+        data: { oneToOneId: one_to_one_id },
+      });
+    }
+  } catch (err) {
+    console.error(
+      `[book-one-to-one-with-block] Notification failed for ${one_to_one_id}:`,
+      (err as Error).message,
+    );
   }
 
   return jsonResponse({ ok: true });

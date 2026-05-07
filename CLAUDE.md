@@ -25,7 +25,7 @@ npm test              # Jest unit tests
 `.env.local` — never commit this file. Required keys:
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://amvajuqaxvedxlmszyjh.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdmFqdXFheHZlZHhsbXN6eWpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4ODUxMDEsImV4cCI6MjA5MDQ2MTEwMX0.4U39MO60Dohce1xpUNVkAgvvd6nhggUIlNUHyvqRoQE
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<get from Supabase dashboard → Settings → API → anon public key>
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51T4ThJRuKnRvAEFQ8gdBWlJ1kVvZAsPMroGC7F5xyOuCJmHgb3pSzYlRme3u7ZU1iXuypWRgXK7tSojvAr9Eb2uR005WIrBGhq
 EAS_PROJECT_ID=...   # only needed for EAS cloud builds
 ```
