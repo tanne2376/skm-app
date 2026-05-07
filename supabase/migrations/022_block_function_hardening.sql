@@ -39,7 +39,7 @@ begin
 
   v_is_owner := (v_block.student_id = v_user_id);
 
-  if not v_is_owner and v_role <> 'admin' then
+  if not v_is_owner and v_role is distinct from 'admin' then
     raise exception 'Not authorised to cancel this block.';
   end if;
 
