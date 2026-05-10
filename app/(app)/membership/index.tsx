@@ -392,11 +392,12 @@ function BlockTemplateCard({
 }) {
   return (
     <Card style={styles.tierCard}>
-      <Text style={styles.tierTitle}>{template.name}</Text>
-      <Text style={styles.tierPrice}>{formatGBP(template.price_pence)}</Text>
-      <Text style={styles.perk}>✓  {template.sessions_count} 1-to-1 session{template.sessions_count === 1 ? '' : 's'}</Text>
+      <Text style={styles.membershipTitle}>{template.name}</Text>
+      <Text style={styles.membershipPrice}>{formatGBP(template.price_pence)}</Text>
       <Text style={styles.perk}>
-        ✓  {template.validity_days === null ? 'Never expires' : `Valid for ${template.validity_days} days`}
+        ✓  {template.sessions_count} 1-to-1 session{template.sessions_count === 1 ? '' : 's'}
+        {' · '}
+        {template.validity_days === null ? 'Never expires' : `Valid ${template.validity_days} days`}
       </Text>
       <Button
         variant="secondary"
