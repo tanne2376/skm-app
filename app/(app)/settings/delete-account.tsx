@@ -40,7 +40,7 @@ export default function DeleteAccountScreen() {
               const { error: signOutError } = await supabase.auth.signOut();
               if (signOutError) {
                 Alert.alert(
-                  'Signed out failed',
+                  'Sign out failed',
                   'Your account was deleted but sign-out failed. Please restart the app.',
                 );
                 return;
