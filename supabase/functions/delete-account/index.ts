@@ -47,10 +47,17 @@ Deno.serve(async (req) => {
         }
       }
     }
-    await adminClient
+    const { error: membershipUpdateError } = await adminClient
       .from('memberships')
       .update({ status: 'cancelled' })
       .eq('id', m.id);
+    if (membershipUpdateError) {
+      console.error('Membership status update failed', {
+        membershipId: m.id,
+        error: membershipUpdateError,
+      });
+      return errorResponse('Failed to update membership status.', 500);
+    }
   }
 
   const { error: rpcError } = await adminClient.rpc(

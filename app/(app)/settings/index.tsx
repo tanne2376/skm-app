@@ -11,8 +11,8 @@ import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 
-const PRIVACY_URL = 'https://tanne2376.github.io/skm-app/privacy';
-const TERMS_URL = 'https://tanne2376.github.io/skm-app/terms';
+const PRIVACY_URL = 'https://tanne2376.github.io/skm-app/privacy.html';
+const TERMS_URL = 'https://tanne2376.github.io/skm-app/terms.html';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();

@@ -31,14 +31,24 @@ export default function DeleteAccountScreen() {
           style: 'destructive',
           onPress: async () => {
             setLoading(true);
-            const { error } = await invokeFunction('delete-account');
-            if (error) {
+            try {
+              const { error } = await invokeFunction('delete-account');
+              if (error) {
+                Alert.alert('Error', error.message);
+                return;
+              }
+              const { error: signOutError } = await supabase.auth.signOut();
+              if (signOutError) {
+                Alert.alert(
+                  'Signed out failed',
+                  'Your account was deleted but sign-out failed. Please restart the app.',
+                );
+                return;
+              }
+              // AuthGuard handles redirect to login once the session clears.
+            } finally {
               setLoading(false);
-              Alert.alert('Error', error.message);
-              return;
             }
-            await supabase.auth.signOut();
-            // signOut clears the session; the AuthGuard will redirect to login.
           },
         },
       ],
