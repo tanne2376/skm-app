@@ -19,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: false,
     bundleIdentifier: 'com.switchkickmafia.app',
     infoPlist: {
-      NSCameraUsageDescription: 'Used for profile photos.',
+      ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {
