@@ -141,8 +141,18 @@ export default function SettingsScreen() {
         <Card>
           <Text style={styles.sectionTitle}>Legal</Text>
           <View style={styles.adminLinks}>
-            <SettingsRow label="Privacy Policy" onPress={() => Linking.openURL(PRIVACY_URL)} />
-            <SettingsRow label="Terms of Service" onPress={() => Linking.openURL(TERMS_URL)} />
+            <SettingsRow 
+              label="Privacy Policy" 
+              onPress={() => Linking.openURL(PRIVACY_URL).catch(() => 
+                Alert.alert('Error', 'Unable to open Privacy Policy.')
+              )} 
+            />
+            <SettingsRow 
+              label="Terms of Service" 
+              onPress={() => Linking.openURL(TERMS_URL).catch(() =>
+                Alert.alert('Error', 'Unable to open Terms of Service.')
+              )} 
+            />
           </View>
         </Card>
 
