@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, TouchableOpacity, Linking } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+
+const PRIVACY_URL = 'https://tanne2376.github.io/skm-app/privacy';
+const TERMS_URL = 'https://tanne2376.github.io/skm-app/terms';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -130,6 +133,16 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.adminLinks}>
             <SettingsRow label="Change Password" onPress={() => router.push('/(app)/settings/change-password')} />
+            <SettingsRow label="Delete Account" onPress={() => router.push('/(app)/settings/delete-account')} />
+          </View>
+        </Card>
+
+        {/* Legal */}
+        <Card>
+          <Text style={styles.sectionTitle}>Legal</Text>
+          <View style={styles.adminLinks}>
+            <SettingsRow label="Privacy Policy" onPress={() => Linking.openURL(PRIVACY_URL)} />
+            <SettingsRow label="Terms of Service" onPress={() => Linking.openURL(TERMS_URL)} />
           </View>
         </Card>
 
