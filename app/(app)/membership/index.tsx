@@ -5,20 +5,30 @@ import { COLORS, MEMBERSHIP_PRICES_PENCE } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { MembershipStatusBadge } from '@/components/ui/Badge';
+import { Badge, MembershipStatusBadge } from '@/components/ui/Badge';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useCreateSubscription, useCreateCashMembership, useCancelSubscription, useResumeSubscription } from '@/hooks/useCreateSubscription';
+import { useActiveBlock } from '@/hooks/useActiveBlock';
+import { useBlockTemplates } from '@/hooks/useBlockTemplates';
+import { useCreateCashBlockPurchase, useCreateStripeBlockPurchase, useCancelBlock } from '@/hooks/useBlockPurchase';
 import { formatGBP } from '@/lib/stripe';
-import { MembershipTier } from '@/types';
+import { MembershipTier, BlockTemplate, BlockWithDerived } from '@/types';
 
 export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
-  const { data: membership, isLoading, refetch } = useActiveMembership();
+  const { data: membership, refetch } = useActiveMembership();
   const createSubscription = useCreateSubscription();
   const createCashMembership = useCreateCashMembership();
   const cancelSubscription = useCancelSubscription();
   const resumeSubscription = useResumeSubscription();
   const [selecting, setSelecting] = useState<{ tier: MembershipTier; method: 'stripe' | 'cash' } | null>(null);
+
+  const { data: block, refetch: refetchBlock } = useActiveBlock();
+  const { data: blockTemplates } = useBlockTemplates({ activeOnly: true });
+  const createCashBlock = useCreateCashBlockPurchase();
+  const createStripeBlock = useCreateStripeBlockPurchase();
+  const cancelBlock = useCancelBlock();
+  const [selectingBlock, setSelectingBlock] = useState<{ id: string; method: 'stripe' | 'cash' } | null>(null);
 
   function handleSubscribe(tier: MembershipTier) {
     Alert.alert(
@@ -58,6 +68,64 @@ export default function MembershipScreen() {
         },
       ],
     );
+  }
+
+  function handleBuyBlockStripe(t: BlockTemplate) {
+    Alert.alert(
+      `Buy ${t.name}`,
+      `${t.sessions_count} sessions${t.validity_days ? ` valid for ${t.validity_days} days` : ' (never expires)'}. ${formatGBP(t.price_pence)} via card.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay',
+          onPress: () => {
+            setSelectingBlock({ id: t.id, method: 'stripe' });
+            createStripeBlock.mutate(t.id, {
+              onSettled: () => setSelectingBlock(null),
+              onSuccess: () => refetchBlock(),
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function handleBuyBlockCash(t: BlockTemplate) {
+    Alert.alert(
+      `Buy ${t.name} — Cash`,
+      `Your block activates immediately. You have 72 hours to pay ${formatGBP(t.price_pence)} in cash to a class leader, or your block will be paused until paid. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Activate',
+          onPress: () => {
+            setSelectingBlock({ id: t.id, method: 'cash' });
+            createCashBlock.mutate(t.id, {
+              onSettled: () => setSelectingBlock(null),
+              onSuccess: () => refetchBlock(),
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function handleCancelBlock(b: BlockWithDerived) {
+    const hasSessionsRemaining =
+      b.sessions_remaining > 0 && !b.is_expired && !b.cash_grace_expired;
+    const message = hasSessionsRemaining
+      ? `Cancelling forfeits your ${b.sessions_remaining} remaining session${
+          b.sessions_remaining === 1 ? '' : 's'
+        }. No refund. You'll be able to buy a new block straight away.`
+      : 'This frees the slot so you can buy a new block. No refund.';
+    Alert.alert('Cancel Block', message, [
+      { text: 'Keep Block', style: 'cancel' },
+      {
+        text: 'Cancel Block',
+        style: 'destructive',
+        onPress: () => cancelBlock.mutate(b.id, { onSuccess: () => refetchBlock() }),
+      },
+    ]);
   }
 
   return (
@@ -203,11 +271,154 @@ export default function MembershipScreen() {
           </>
         )}
 
+        {/* 1-to-1 Blocks section */}
+        {block ? (
+          <ActiveBlockCard
+            block={block}
+            onCancel={() => handleCancelBlock(block)}
+            cancelLoading={cancelBlock.isPending}
+          />
+        ) : (blockTemplates?.length ?? 0) > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>1-to-1 Session Blocks</Text>
+            {blockTemplates!.map((t) => (
+              <BlockTemplateCard
+                key={t.id}
+                template={t}
+                onBuyStripe={() => handleBuyBlockStripe(t)}
+                onBuyCash={() => handleBuyBlockCash(t)}
+                stripeLoading={selectingBlock?.id === t.id && selectingBlock.method === 'stripe'}
+                cashLoading={selectingBlock?.id === t.id && selectingBlock.method === 'cash'}
+                disabled={!!selectingBlock}
+              />
+            ))}
+            <Text style={styles.disclaimer}>Blocks apply to 1-to-1 sessions only.</Text>
+          </>
+        ) : null}
+
         <Text style={styles.disclaimer}>
           Memberships do not cover 1-to-1 sessions. Auto-renews on the 1st of each month. Cancel anytime.
         </Text>
       </ScrollView>
     </View>
+  );
+}
+
+function ActiveBlockCard({
+  block,
+  onCancel,
+  cancelLoading,
+}: {
+  block: BlockWithDerived;
+  onCancel: () => void;
+  cancelLoading: boolean;
+}) {
+  return (
+    <Card style={styles.activeCard}>
+      <View style={styles.row}>
+        <View style={styles.flex}>
+          <Text style={styles.membershipTitle}>{block.template_name_snapshot}</Text>
+          <Text style={styles.membershipPrice}>
+            {block.sessions_used} of {block.sessions_total} sessions used
+          </Text>
+        </View>
+        <Badge
+          label={
+            block.cash_grace_expired
+              ? 'Paused'
+              : block.is_expired
+                ? 'Expired'
+                : block.sessions_remaining === 0
+                  ? 'Used Up'
+                  : 'Active'
+          }
+          variant={
+            block.cash_grace_expired || block.is_expired
+              ? 'error'
+              : block.sessions_remaining === 0
+                ? 'neutral'
+                : 'success'
+          }
+        />
+      </View>
+
+      <Text style={styles.renewalDate}>
+        {block.expires_at
+          ? `Expires ${new Date(block.expires_at).toLocaleDateString('en-GB', {
+              day: 'numeric', month: 'long', year: 'numeric',
+            })}`
+          : 'Never expires'}
+      </Text>
+
+      {block.payment_method === 'cash' && block.payment_status === 'pending' && (
+        <View style={block.cash_grace_expired ? styles.warningBanner : styles.cashPendingBanner}>
+          <Text style={block.cash_grace_expired ? styles.warningText : styles.cashPendingText}>
+            {block.cash_grace_expired
+              ? `Cash payment overdue — your block is paused until a class leader confirms payment of ${formatGBP(block.price_pence_snapshot)}.`
+              : `Cash pending — pay ${formatGBP(block.price_pence_snapshot)} to a class leader by ${new Date(block.cash_grace_expires_at!).toLocaleString('en-GB', {
+                  weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                })}.`}
+          </Text>
+        </View>
+      )}
+
+      <Button
+        variant="ghost"
+        size="sm"
+        style={styles.cancelButton}
+        onPress={onCancel}
+        loading={cancelLoading}
+      >
+        Cancel Block
+      </Button>
+    </Card>
+  );
+}
+
+function BlockTemplateCard({
+  template,
+  onBuyStripe,
+  onBuyCash,
+  stripeLoading,
+  cashLoading,
+  disabled,
+}: {
+  template: BlockTemplate;
+  onBuyStripe: () => void;
+  onBuyCash: () => void;
+  stripeLoading: boolean;
+  cashLoading: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <Card style={styles.tierCard}>
+      <Text style={styles.membershipTitle}>{template.name}</Text>
+      <Text style={styles.membershipPrice}>{formatGBP(template.price_pence)}</Text>
+      <Text style={styles.perk}>
+        ✓  {template.sessions_count} 1-to-1 session{template.sessions_count === 1 ? '' : 's'}
+        {' · '}
+        {template.validity_days === null ? 'Never expires' : `Valid ${template.validity_days} days`}
+      </Text>
+      <Button
+        variant="secondary"
+        size="md"
+        onPress={onBuyStripe}
+        loading={stripeLoading}
+        disabled={disabled}
+        style={styles.tierButton}
+      >
+        Pay with Card
+      </Button>
+      <Button
+        variant="ghost"
+        size="md"
+        onPress={onBuyCash}
+        loading={cashLoading}
+        disabled={disabled}
+      >
+        Pay with Cash
+      </Button>
+    </Card>
   );
 }
 

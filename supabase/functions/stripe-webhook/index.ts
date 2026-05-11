@@ -93,6 +93,35 @@ Deno.serve(async (req) => {
             });
           }
         }
+      } else if (booking_type === 'block_purchase') {
+        // The RPC returns the block id only on a real pending_stripe→active
+        // transition; idempotent re-fires and the activation race (parked
+        // as 'needs_review') return NULL, so we don't notify twice or
+        // notify on a charge that needs admin intervention.
+        const { data: activatedId, error: actErr } = await adminClient.rpc(
+          'activate_block_from_stripe',
+          { p_payment_intent_id: obj.id },
+        );
+        if (actErr) throw actErr;
+
+        if (activatedId) {
+          const { data: block } = await adminClient
+            .from('blocks')
+            .select('student_id, sessions_total, template_name_snapshot')
+            .eq('id', activatedId)
+            .single();
+
+          if (block?.student_id) {
+            await notify({
+              adminClient,
+              userId: block.student_id,
+              type: 'block_activated',
+              title: 'Block activated',
+              body: `Your ${block.template_name_snapshot} (${block.sessions_total} sessions) is ready to use.`,
+              data: { screen: 'membership' },
+            });
+          }
+        }
       }
     } catch (err: any) {
       return errResp(eventType, err);
@@ -114,6 +143,12 @@ Deno.serve(async (req) => {
           .from('one_to_ones')
           .update({ status: 'available', student_id: null, payment_status: null, payment_method: null, stripe_payment_intent_id: null })
           .eq('stripe_payment_intent_id', obj.id);
+      } else if (booking_type === 'block_purchase') {
+        const { error: failErr } = await adminClient.rpc(
+          'activate_block_failed_from_stripe',
+          { p_payment_intent_id: obj.id },
+        );
+        if (failErr) throw failErr;
       }
     } catch (err: any) {
       return errResp(eventType, err);

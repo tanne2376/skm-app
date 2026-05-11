@@ -15,6 +15,10 @@ export async function initializePaymentSheet(params: PaymentSheetParams): Promis
     customerEphemeralKeySecret: params.customerEphemeralKeySecret,
     customerId: params.customerId,
     merchantDisplayName: params.merchantDisplayName ?? 'Switch-Kick Mafia',
+    // Required for redirect-based payment methods (Klarna, Bancontact, iDEAL, etc.)
+    // to return to the app after the bank/wallet flow completes. App scheme set
+    // in app.config.ts.
+    returnURL: 'skm://stripe-redirect',
     applePay: {
       merchantCountryCode: 'GB',
     },

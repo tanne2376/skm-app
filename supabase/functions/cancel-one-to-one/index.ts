@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
   const withinWindow = !isPast && hoursUntilSession <= CANCELLATION_WINDOW_HOURS;
 
   let refunded = false;
+  let blockRefunded = false;
 
   // Issue Stripe refund if paid via app and session hasn't started
   if (oto.payment_method === 'app' && oto.stripe_payment_intent_id && !isPast) {
@@ -64,6 +65,19 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Refund a block session if the booking was paid via a block. Mirrors
+  // the Stripe rule: only refund if outside the no-refund window.
+  if (oto.payment_method === 'block' && oto.block_id && !isPast && !withinWindow) {
+    const { error: refundErr } = await adminClient.rpc('refund_block_slot', {
+      p_block_id: oto.block_id,
+    });
+    if (refundErr) {
+      console.error('Block slot refund failed:', refundErr);
+    } else {
+      blockRefunded = true;
+    }
+  }
+
   // Reset row back to available so the slot can be booked again
   await adminClient
     .from('one_to_ones')
@@ -73,17 +87,21 @@ Deno.serve(async (req) => {
       payment_method: null,
       payment_status: null,
       stripe_payment_intent_id: null,
+      block_id: null,
     })
     .eq('id', oneToOneId);
 
   return jsonResponse({
     refunded,
+    blockRefunded,
     message: refunded
       ? 'Booking cancelled and full refund issued.'
-      : withinWindow
-        ? `Booking cancelled. No refund — session is within ${CANCELLATION_WINDOW_HOURS} hours.`
-        : isPast
-          ? 'Booking cancelled. Session has already passed.'
-          : 'Booking cancelled.',
+      : blockRefunded
+        ? 'Booking cancelled and block session refunded.'
+        : withinWindow
+          ? `Booking cancelled. No refund — session is within ${CANCELLATION_WINDOW_HOURS} hours.`
+          : isPast
+            ? 'Booking cancelled. Session has already passed.'
+            : 'Booking cancelled.',
   });
 });

@@ -25,8 +25,8 @@ npm test              # Jest unit tests
 `.env.local` — never commit this file. Required keys:
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://amvajuqaxvedxlmszyjh.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=...
-EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<get from Supabase dashboard → Settings → API → anon public key>
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51T4ThJRuKnRvAEFQ8gdBWlJ1kVvZAsPMroGC7F5xyOuCJmHgb3pSzYlRme3u7ZU1iXuypWRgXK7tSojvAr9Eb2uR005WIrBGhq
 EAS_PROJECT_ID=...   # only needed for EAS cloud builds
 ```
 
@@ -140,3 +140,13 @@ where id = (select id from auth.users where email = 'admin@test.com');
 - [ ] Build + submit via EAS: `npx eas build --platform all --profile production`
 - [ ] Switch Stripe keys from test (`pk_test_` / `sk_test_`) to live (`pk_live_` / `sk_live_`)
 - [ ] Update Stripe webhook endpoint to production URL and replace `STRIPE_WEBHOOK_SECRET`
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

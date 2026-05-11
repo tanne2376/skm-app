@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { useActiveBlock } from '@/hooks/useActiveBlock';
 import { supabase } from '@/lib/supabase';
 import { formatGBP } from '@/lib/stripe';
 import { OneToOneWithDetails } from '@/types';
@@ -18,6 +19,7 @@ type Tab = 'available' | 'my-sessions';
 export default function OneToOnesScreen() {
   const insets = useSafeAreaInsets();
   const { role, session } = useAuth();
+  const { data: block } = useActiveBlock();
   const queryClient = useQueryClient();
   const canCreate = role === 'teacher' || role === 'admin';
   const userId = session?.user.id;
@@ -31,7 +33,7 @@ export default function OneToOnesScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('one_to_ones')
-        .select(`*, teacher:profiles!teacher_id(id, full_name), location:locations(id, name, address)`)
+        .select(`*, teacher:profiles!teacher_id(id, full_name), location:locations(id, name, address), block:blocks!block_id(id, payment_status, payment_method)`)
         .eq('status', 'available')
         .neq('creator_id', userId!)
         .gte('session_date', new Date().toISOString().split('T')[0])
@@ -55,7 +57,7 @@ export default function OneToOnesScreen() {
       ].join('-');
       const { data, error } = await supabase
         .from('one_to_ones')
-        .select(`*, teacher:profiles!teacher_id(id, full_name), student:profiles!student_id(id, full_name), location:locations(id, name, address)`)
+        .select(`*, teacher:profiles!teacher_id(id, full_name), student:profiles!student_id(id, full_name), location:locations(id, name, address), block:blocks!block_id(id, payment_status, payment_method)`)
         .or(`creator_id.eq.${userId},teacher_id.eq.${userId},student_id.eq.${userId}`)
         .or(`session_date.gte.${today},and(payment_method.eq.cash,payment_status.eq.pending)`)
         .order('session_date', { ascending: true })
@@ -116,21 +118,41 @@ export default function OneToOnesScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
         ListHeaderComponent={
-          canCreate && activeTab === 'my-sessions' ? (
-            <Button
-              variant="secondary"
-              size="md"
-              onPress={() => router.push('/(app)/one-to-ones/create')}
-              style={styles.newButton}
-            >
-              + New Session
-            </Button>
-          ) : null
+          <View>
+            {block?.is_usable && activeTab === 'available' && (
+              <View style={styles.blockBanner}>
+                <Text style={styles.blockBannerTitle}>
+                  Block: {block.sessions_remaining} session{block.sessions_remaining === 1 ? '' : 's'} remaining
+                </Text>
+                <Text style={styles.blockBannerSub}>
+                  {block.expires_at
+                    ? `Expires ${new Date(block.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+                    : 'Never expires'}
+                </Text>
+              </View>
+            )}
+            {canCreate && activeTab === 'my-sessions' && (
+              <Button
+                variant="secondary"
+                size="md"
+                onPress={() => router.push('/(app)/one-to-ones/create')}
+                style={styles.newButton}
+              >
+                + New Session
+              </Button>
+            )}
+          </View>
         }
         renderItem={({ item }) => {
           const isCreator = item.creator_id === userId || item.teacher_id === userId;
           const isStudentBooking = item.student_id === userId && !isCreator;
-          const showCashConfirm = isCreator && item.status === 'booked' && item.payment_method === 'cash' && item.payment_status === 'pending';
+          // Block-paid bookings are not cash-confirmed per-1-to-1 — confirmation
+          // happens at the block level via Manage → Users.
+          const showCashConfirm =
+            isCreator
+            && item.status === 'booked'
+            && item.payment_method === 'cash'
+            && item.payment_status === 'pending';
 
           return (
             <OneToOneCard
@@ -186,10 +208,18 @@ function OneToOneCard({
   const dateStr = new Date(oto.session_date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
   const isCashPending = oto.status === 'booked' && oto.payment_method === 'cash' && oto.payment_status === 'pending';
+  const isBlockPaid = oto.status === 'booked' && oto.payment_method === 'block';
+  const isBlockCashPending = isBlockPaid && oto.block?.payment_status === 'pending';
 
   let badgeLabel: string;
   let badgeVariant: 'success' | 'info' | 'warning' | 'neutral';
-  if (isCashPending) {
+  if (isBlockCashPending) {
+    badgeLabel = 'Cash Pending (Block)';
+    badgeVariant = 'warning';
+  } else if (isBlockPaid) {
+    badgeLabel = 'Paid with Block';
+    badgeVariant = 'success';
+  } else if (isCashPending) {
     badgeLabel = 'Cash Pending';
     badgeVariant = 'warning';
   } else if (oto.status === 'available') {
@@ -279,4 +309,14 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.grey[800],
     alignItems: 'flex-end',
   },
+  blockBanner: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderColor: 'rgba(34,197,94,0.3)',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  blockBannerTitle: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
+  blockBannerSub: { color: COLORS.grey[400], fontSize: 12, marginTop: 2 },
 });

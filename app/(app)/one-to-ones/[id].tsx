@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
+import { useActiveBlock } from '@/hooks/useActiveBlock';
+import { useBookOneToOneWithBlock } from '@/hooks/useBlockPurchase';
 import { supabase, invokeFunction } from '@/lib/supabase';
 import { initializePaymentSheet, openPaymentSheet, formatGBP } from '@/lib/stripe';
 import { OneToOneWithDetails, PaymentMethod } from '@/types';
@@ -21,6 +23,8 @@ export default function OneToOneDetailScreen() {
   const insets = useSafeAreaInsets();
   const { session, role } = useAuth();
   const { data: membership } = useActiveMembership();
+  const { data: block } = useActiveBlock();
+  const bookWithBlock = useBookOneToOneWithBlock();
   const queryClient = useQueryClient();
   const [showPayment, setShowPayment] = useState(false);
 
@@ -29,7 +33,7 @@ export default function OneToOneDetailScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('one_to_ones')
-        .select(`*, teacher:profiles!teacher_id(id, full_name), student:profiles!student_id(id, full_name), location:locations(id, name, address)`)
+        .select(`*, teacher:profiles!teacher_id(id, full_name), student:profiles!student_id(id, full_name), location:locations(id, name, address), block:blocks!block_id(id, payment_status, payment_method)`)
         .eq('id', id)
         .single();
       if (error) throw error;
@@ -177,6 +181,11 @@ export default function OneToOneDetailScreen() {
   const isCreator = oto.teacher_id === session?.user.id || oto.creator_id === session?.user.id;
   const isBooked = oto.status === 'booked';
   const isCashPending = isBooked && oto.payment_method === 'cash' && oto.payment_status === 'pending';
+  const isBlockPaid = isBooked && oto.payment_method === 'block';
+  // Block was bought with cash that hasn't been confirmed yet — display state
+  // derives from the joined block, not the 1-to-1 row (whose payment_status is
+  // 'paid' because the slot itself is consumed).
+  const isBlockCashPending = isBlockPaid && oto.block?.payment_status === 'pending';
 
   // Anyone who didn't create the session can book it
   const canBook = oto.status === 'available' && !isCreator;
@@ -184,7 +193,13 @@ export default function OneToOneDetailScreen() {
   // Badge logic
   let badgeLabel: string;
   let badgeVariant: 'success' | 'info' | 'warning' | 'neutral';
-  if (isCashPending) {
+  if (isBlockCashPending) {
+    badgeLabel = 'Cash Pending (Block)';
+    badgeVariant = 'warning';
+  } else if (isBlockPaid) {
+    badgeLabel = 'Paid with Block';
+    badgeVariant = 'success';
+  } else if (isCashPending) {
     badgeLabel = 'Cash Pending';
     badgeVariant = 'warning';
   } else if (oto.status === 'available') {
@@ -239,7 +254,17 @@ export default function OneToOneDetailScreen() {
         </Card>
 
         {/* Book button — available session, not the creator */}
-        {canBook && !showPayment && (
+        {canBook && !showPayment && block?.is_usable && (
+          <Button
+            variant="primary"
+            size="lg"
+            onPress={() => bookWithBlock.mutate(id)}
+            loading={bookWithBlock.isPending}
+          >
+            {`Book with block (${block.sessions_remaining} session${block.sessions_remaining === 1 ? '' : 's'} left)`}
+          </Button>
+        )}
+        {canBook && !showPayment && !block?.is_usable && (
           <Button variant="primary" size="lg" onPress={() => setShowPayment(true)}>
             {`Book for ${formatGBP(oto.price)}`}
           </Button>
@@ -266,7 +291,7 @@ export default function OneToOneDetailScreen() {
           </Card>
         )}
 
-        {/* Confirm cash button — creator view */}
+        {/* Confirm cash button — creator view (regular cash) */}
         {isCashPending && isCreator && (
           <Button
             variant="primary"
@@ -276,6 +301,16 @@ export default function OneToOneDetailScreen() {
           >
             Confirm Cash Payment
           </Button>
+        )}
+
+        {/* Block-cash-pending — creator info (confirmation happens at the block level) */}
+        {isBlockCashPending && isCreator && (
+          <View style={styles.blockCashPendingBanner}>
+            <Text style={styles.blockCashPendingText}>
+              This 1-to-1 is paid with a block whose cash payment is still pending.
+              Cash confirmation happens on the block itself in Manage → Users.
+            </Text>
+          </View>
         )}
 
         {/* Cancel button — student who booked */}
@@ -355,4 +390,10 @@ const styles = StyleSheet.create({
 
   awaitingText: { color: COLORS.grey[300], fontSize: 15, fontWeight: '600', textAlign: 'center' },
   awaitingSub: { color: COLORS.grey[600], fontSize: 13, textAlign: 'center', marginTop: 4, lineHeight: 18 },
+
+  blockCashPendingBanner: {
+    backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 8, padding: 12,
+    borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)',
+  },
+  blockCashPendingText: { color: COLORS.warning, fontSize: 13, lineHeight: 18 },
 });
