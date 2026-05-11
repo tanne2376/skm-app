@@ -27,10 +27,10 @@ details confidential and for activity that happens under your account.
 
 ## 3. Cancellations and refunds
 
-- **More than 3 hours before** a class or 1-to-1 starts — full refund
-  to your original payment method.
-- **3 hours or less before** the session — no refund. The fee is
-  retained.
+- **Classes** — cancel more than 3 hours before the class starts for a
+  full refund. 3 hours or less before, no refund.
+- **1-to-1 sessions** — cancel more than 24 hours before the session
+  starts for a full refund. 24 hours or less before, no refund.
 - Memberships can be cancelled at any time from
   **Settings → Membership** and remain active until the end of the
   current billing period.
@@ -53,9 +53,7 @@ interfere with other users' bookings.
 
 Switch-Kick Mafia training involves physical contact and combat
 sports. You confirm you are physically fit to participate and accept
-the inherent risks. Teachers may decline bookings at their discretion
-for safety reasons; in that case your booking will be refunded in
-full.
+the inherent risks.
 
 ## 7. Deleting your account
 
@@ -87,7 +85,3 @@ These Terms are governed by the laws of England and Wales, and any
 disputes are subject to the exclusive jurisdiction of the English
 courts.
 
-## 11. Contact
-
-Questions about these Terms? Email
-[support@switchkickmafia.com](mailto:support@switchkickmafia.com).
