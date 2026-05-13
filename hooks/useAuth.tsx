@@ -12,6 +12,7 @@ interface AuthContextType {
   role: UserRole | null;
   isLoading: boolean;
   isPasswordRecovery: boolean;
+  isEmailVerified: boolean;
   clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<void>;
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: profile?.role ?? null,
         isLoading,
         isPasswordRecovery,
+        isEmailVerified: !!session?.user?.email_confirmed_at,
         clearPasswordRecovery,
         signIn,
         signUp,

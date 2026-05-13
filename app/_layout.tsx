@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
 const stripePublishableKey = Constants.expoConfig?.extra?.stripePublishableKey as string;
 
 function AuthGuard() {
-  const { session, isLoading, isPasswordRecovery } = useAuth();
+  const { session, isLoading, isPasswordRecovery, isEmailVerified } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -36,12 +36,21 @@ function AuthGuard() {
     }
 
     const inAuthGroup = segments[0] === '(auth)';
+    const onVerifyEmail = inAuthGroup && segments[1] === 'verify-email';
+
+    // Signed in but email not yet verified: keep them on verify-email until they confirm.
+    // Edge functions reject unverified users with non-2xx errors; gating here avoids those.
+    if (session && !isEmailVerified) {
+      if (!onVerifyEmail) router.replace('/(auth)/verify-email');
+      return;
+    }
+
     if (session && inAuthGroup) {
       router.replace('/(app)/home');
     } else if (!session && !inAuthGroup && segments[0] !== undefined) {
       router.replace('/(auth)/login');
     }
-  }, [session, isLoading, isPasswordRecovery, segments]);
+  }, [session, isLoading, isPasswordRecovery, isEmailVerified, segments]);
 
   return null;
 }
