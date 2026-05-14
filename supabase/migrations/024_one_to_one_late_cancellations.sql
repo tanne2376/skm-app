@@ -39,10 +39,6 @@ create unique index late_cancellations_one_to_one_id_key
   on late_cancellations (one_to_one_id)
   where one_to_one_id is not null;
 
-create index idx_late_cancellations_one_to_one_id
-  on late_cancellations (one_to_one_id)
-  where one_to_one_id is not null;
-
 -- ============================================================
 -- HISTORY RPC: include 1-to-1 strikes
 -- ============================================================
