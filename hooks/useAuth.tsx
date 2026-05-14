@@ -6,12 +6,19 @@ import { Profile, UserRole } from '@/types';
 
 const PASSWORD_RECOVERY_KEY = 'skm_password_recovery';
 
+// Supabase appends auth tokens to this URL as a fragment after verification.
+// docs/verified.html forwards them to skm://verified#... so the app picks up
+// the session via handleAuthDeepLink. Must be on the Supabase Auth allow-list.
+export const EMAIL_VERIFICATION_REDIRECT_URL =
+  'https://tanne2376.github.io/skm-app/verified.html';
+
 interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   role: UserRole | null;
   isLoading: boolean;
   isPasswordRecovery: boolean;
+  isEmailVerified: boolean;
   clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<void>;
@@ -92,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
       options: {
         data: { full_name: fullName, phone: phone ?? '' },
+        emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
       },
     });
     if (error) throw error;
@@ -109,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: profile?.role ?? null,
         isLoading,
         isPasswordRecovery,
+        isEmailVerified: !!session?.user?.email_confirmed_at,
         clearPasswordRecovery,
         signIn,
         signUp,

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email verified · Switch-Kick Mafia</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: #0A0A0A;
+      color: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 420px;
+      width: 100%;
+      background: #1A1A1A;
+      border: 1px solid #2E2E2E;
+      border-radius: 12px;
+      padding: 32px;
+      text-align: center;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 24px;
+      font-weight: 800;
+    }
+    p {
+      margin: 0 0 16px;
+      color: #BDBDBD;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .accent {
+      color: #C8102E;
+      font-weight: 700;
+    }
+    a.button {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 12px 20px;
+      background: #C8102E;
+      color: #FFFFFF;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>You're verified <span class="accent">✓</span></h1>
+    <p>Return to the <strong>Switch-Kick Mafia</strong> app — you'll be signed in automatically.</p>
+    <p>If you opened this link on a different device, just bring the app to the foreground on your phone.</p>
+    <a class="button" id="open-app" href="skm://verified">Open Switch-Kick Mafia</a>
+  </div>
+
+  <script>
+    // Supabase appends the auth tokens to the URL fragment after verifying.
+    // Forward the same fragment to the app's custom URL scheme so the deep
+    // link handler in app/_layout.tsx can call setSession with the new tokens.
+    (function () {
+      var hash = window.location.hash || '';
+      var deepLink = 'skm://verified' + hash;
+      var btn = document.getElementById('open-app');
+      btn.href = deepLink;
+      // Attempt to launch the app automatically; harmless on devices that
+      // can't handle the scheme (they stay on this page).
+      setTimeout(function () {
+        window.location.href = deepLink;
+      }, 250);
+    })();
+  </script>
+</body>
+</html>
