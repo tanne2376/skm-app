@@ -38,6 +38,12 @@ function AuthGuard() {
     const inAuthGroup = segments[0] === '(auth)';
     const onVerifyEmail = inAuthGroup && segments[1] === 'verify-email';
 
+    // If the user signs out while on verify-email, redirect to login
+    if (!session && onVerifyEmail) {
+      router.replace('/(auth)/login');
+      return;
+    }
+
     // Signed in but email not yet verified: keep them on verify-email until they confirm.
     // Edge functions reject unverified users with non-2xx errors; gating here avoids those.
     if (session && !isEmailVerified) {
