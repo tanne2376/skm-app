@@ -36,6 +36,7 @@ interface UserWithLateCancellations {
 
 interface LateCancellationHistoryItem {
   id: string;
+  kind: 'class' | 'one_to_one';
   session_id: string;
   class_name: string;
   session_date: string;
@@ -803,7 +804,9 @@ function UsersTab() {
                     )}
                     {!historyLoading && (history ?? []).map((h) => (
                       <View key={h.id} style={styles.historyRow}>
-                        <Text style={styles.historyClass}>{h.class_name}</Text>
+                        <Text style={styles.historyClass}>
+                          {h.kind === 'one_to_one' ? '1-to-1 · ' : ''}{h.class_name}
+                        </Text>
                         <Text style={styles.historyDate}>
                           {new Date(h.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
                             weekday: 'short', day: 'numeric', month: 'short',

@@ -96,7 +96,13 @@ export default function OneToOneDetailScreen() {
 
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await invokeFunction<{ refunded: boolean; message: string }>('cancel-one-to-one', { oneToOneId: id });
+      const { data, error } = await invokeFunction<{
+        refunded: boolean;
+        blockRefunded?: boolean;
+        lateCancelCount?: number;
+        isNowBlocked?: boolean;
+        message: string;
+      }>('cancel-one-to-one', { oneToOneId: id });
       if (error) throw new Error(error.message);
       return data!;
     },
@@ -130,11 +136,23 @@ export default function OneToOneDetailScreen() {
     const hoursUntil = (sessionStart.getTime() - Date.now()) / (1000 * 60 * 60);
     const withinWindow = hoursUntil > 0 && hoursUntil <= 24;
 
-    const message = withinWindow
-      ? 'The session is within 24 hours. No refund will be issued.'
-      : oto.payment_method === 'app' || !oto.payment_method
-        ? 'You will receive a full refund.'
-        : 'Your booking will be cancelled.';
+    let message: string;
+    if (withinWindow) {
+      const consequence =
+        oto.payment_method === 'block'
+          ? 'Your block slot will not be returned'
+          : oto.payment_method === 'cash'
+            ? 'No refund will be issued'
+            : 'No refund will be issued';
+      message = `It is less than 24 hours until this session. ${consequence}, and this will be recorded as a late cancellation.`;
+    } else {
+      message =
+        oto.payment_method === 'block'
+          ? 'Your block slot will be returned.'
+          : oto.payment_method === 'cash'
+            ? 'Your booking will be cancelled.'
+            : 'You will receive a full refund.';
+    }
 
     Alert.alert('Cancel booking?', message, [
       { text: 'Keep booking', style: 'cancel' },
@@ -317,7 +335,7 @@ export default function OneToOneDetailScreen() {
         {isBooked && isOwnBooking && (
           <View style={styles.cancelSection}>
             <Text style={styles.cancelPolicy}>
-              Cancel more than 24 hours before the session for a full refund. Cancellations within 24 hours are non-refundable.
+              Cancel more than 24 hours before the session for a full refund (or to return your block slot). Cancellations within 24 hours are non-refundable, do not return block slots, and are recorded as a late cancellation.
             </Text>
             <Button
               variant="secondary"
