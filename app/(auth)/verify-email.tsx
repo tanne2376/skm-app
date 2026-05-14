@@ -99,9 +99,6 @@ export default function VerifyEmailScreen() {
         </Button>
       </View>
 
-      {(resending || refreshing) && (
-        <ActivityIndicator style={{ marginTop: 12 }} color={COLORS.grey[400]} />
-      )}
     </View>
   );
 }
