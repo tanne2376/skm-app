@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Alert, ActivityIndicator, AppState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth, EMAIL_VERIFICATION_REDIRECT_URL } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 
 export default function VerifyEmailScreen() {
@@ -15,17 +15,25 @@ export default function VerifyEmailScreen() {
   const [resending, setResending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Pick up verification automatically the first time the screen mounts —
-  // covers the common case of the user tapping the email link and coming
-  // back to a still-running app.
+  // Refresh on mount and on every transition back to the foreground —
+  // covers the user verifying on this device (deep link returns control
+  // to the app) or on another device (they swipe back to SKM manually).
   useEffect(() => {
     supabase.auth.refreshSession();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') supabase.auth.refreshSession();
+    });
+    return () => sub.remove();
   }, []);
 
   async function handleResend() {
     if (!email) return;
     setResending(true);
-    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL },
+    });
     setResending(false);
     if (error) {
       Alert.alert('Could not resend', error.message);
