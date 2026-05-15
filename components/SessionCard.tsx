@@ -2,6 +2,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { COLORS, CANCELLATION_WINDOW_HOURS } from '@/constants';
 import { ClassSessionWithDetails } from '@/types';
 import { formatGBP } from '@/lib/stripe';
+import { getClassLeaderName } from '@/lib/teacherName';
+import { useDefaultClassLeaderName } from '@/hooks/useDefaultClassLeader';
 import { Card } from './ui/Card';
 import { Badge, BookingStatusBadge } from './ui/Badge';
 import { Button } from './ui/Button';
@@ -17,6 +19,7 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session, onBook, onCancel, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false }: SessionCardProps) {
+  const { data: defaultLeaderName } = useDefaultClassLeaderName();
   const now = new Date();
   const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
   const isPast = sessionStart < now;
@@ -30,7 +33,7 @@ export function SessionCard({ session, onBook, onCancel, isMutating = false, isA
   const dateStr = new Date(session.session_date + 'T00:00:00').toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short',
   });
-  const teacherName = session.teacher?.full_name ?? 'TBA';
+  const teacherName = getClassLeaderName(session, defaultLeaderName);
 
   if (session.is_cancelled) {
     return (

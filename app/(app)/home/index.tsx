@@ -23,6 +23,8 @@ import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useBookSession, useCancelBooking, useJoinWaitlist } from '@/hooks/useBookSession';
+import { useDefaultClassLeaderName } from '@/hooks/useDefaultClassLeader';
+import { getClassLeaderName } from '@/lib/teacherName';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { useBookingBlocked } from '@/hooks/useLateCancellations';
@@ -216,6 +218,8 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   const [cancelReason, setCancelReason] = useState('');
   const [editStart, setEditStart] = useState(session.start_time.slice(0, 5));
   const [editEnd, setEditEnd] = useState(session.end_time.slice(0, 5));
+  const { data: defaultLeaderName } = useDefaultClassLeaderName();
+  const teacherName = getClassLeaderName(session, defaultLeaderName);
 
   const dateStr = new Date(session.session_date + 'T00:00:00Z').toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short',
@@ -316,9 +320,7 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           <Text style={styles.adminMeta}>
             {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
           </Text>
-          {session.teacher && (
-            <Text style={styles.adminTeacher}>{session.teacher.full_name}</Text>
-          )}
+          <Text style={styles.adminTeacher}>{teacherName}</Text>
         </View>
         <View style={styles.adminStats}>
           <Text style={[styles.adminCount, isFull && styles.adminCountFull]}>

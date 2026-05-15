@@ -131,31 +131,14 @@ function TimetableTab() {
   const { data: templates, isLoading, refetch } = useQuery<TemplateWithTeacher[]>({
     queryKey: ['class_templates_with_teachers'],
     queryFn: async () => {
-      const { data: tpls, error } = await supabase
+      const { data, error } = await supabase
         .from('class_templates')
-        .select('*')
+        .select('*, default_teacher:profiles!teacher_id(id, full_name)')
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
 
-      const today = new Date().toISOString().split('T')[0];
-      const { data: sessions } = await supabase
-        .from('class_sessions')
-        .select('template_id, teacher:profiles!teacher_id(id, full_name)')
-        .gte('session_date', today)
-        .order('session_date', { ascending: true });
-
-      const teacherByTemplate = new Map<string, Pick<Profile, 'id' | 'full_name'> | null>();
-      for (const s of (sessions ?? []) as any[]) {
-        if (!teacherByTemplate.has(s.template_id)) {
-          teacherByTemplate.set(s.template_id, s.teacher ?? null);
-        }
-      }
-
-      return (tpls ?? []).map((t: any) => ({
-        ...t,
-        default_teacher: teacherByTemplate.get(t.id) ?? null,
-      })) as TemplateWithTeacher[];
+      return (data ?? []) as TemplateWithTeacher[];
     },
   });
 
@@ -184,14 +167,24 @@ function TimetableTab() {
       const cap = parseInt(editCapacity, 10);
       if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
 
+      const teacherChanged = editTeacher?.id !== editingTemplate.default_teacher?.id;
+
       const { error } = await supabase
         .from('class_templates')
-        .update({ name: editName.trim(), start_time: editStart, end_time: editEnd, capacity: cap })
+        .update({
+          name: editName.trim(),
+          start_time: editStart,
+          end_time: editEnd,
+          capacity: cap,
+          teacher_id: editTeacher?.id ?? null,
+        })
         .eq('id', editingTemplate.id);
       if (error) throw error;
 
-      // Update teacher on all future sessions if changed
-      if (editTeacher?.id !== editingTemplate.default_teacher?.id) {
+      // Propagate the leader change to already-generated future sessions so
+      // existing bookings reflect the new leader. New sessions inherit
+      // automatically via generate_sessions_ahead.
+      if (teacherChanged) {
         const today = new Date().toISOString().split('T')[0];
         await supabase
           .from('class_sessions')
