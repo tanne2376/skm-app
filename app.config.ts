@@ -10,11 +10,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'dark',
   scheme: 'skm',
   newArchEnabled: true,
-  splash: {
-    image: './assets/splash-icon.png',
-    resizeMode: 'contain',
-    backgroundColor: '#0A0A0A',
-  },
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.switchkickmafia.app',
@@ -34,6 +29,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-secure-store',
     'expo-font',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        backgroundColor: '#0A0A0A',
+        resizeMode: 'contain',
+      },
+    ],
     [
       'expo-notifications',
       {
