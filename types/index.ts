@@ -57,6 +57,7 @@ export interface ClassTemplate {
   end_time: string;
   capacity: number;
   price: number;       // pence
+  teacher_id: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -139,7 +140,12 @@ export interface OneToOne {
 
 // Composite types used in UI
 export interface ClassSessionWithDetails extends ClassSession {
-  class_templates: ClassTemplate;
+  // teacher is only joined in queries that need it for display
+  // (useClassSessions). Queries that don't render the leader (e.g.
+  // teacher's own roster in my-classes) can omit the join.
+  class_templates: ClassTemplate & {
+    teacher?: Pick<Profile, 'id' | 'full_name'> | null;
+  };
   teacher: Pick<Profile, 'id' | 'full_name'> | null;
   confirmed_count: number;
   waitlist_count: number;

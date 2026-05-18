@@ -3,6 +3,13 @@ import { render, screen, fireEvent } from '@testing-library/react-native';
 import { SessionCard } from '../../components/SessionCard';
 import { ClassSessionWithDetails } from '../../types';
 
+// SessionCard now uses useDefaultClassLeaderName for the "Admin" fallback
+// when neither session nor template has a teacher. Stub it so render() works
+// without a QueryClient.
+jest.mock('../../hooks/useDefaultClassLeader', () => ({
+  useDefaultClassLeaderName: () => ({ data: 'Admin' }),
+}));
+
 const base: ClassSessionWithDetails = {
   id: 'session-1',
   template_id: 'tmpl-1',
@@ -23,8 +30,10 @@ const base: ClassSessionWithDetails = {
     end_time: '19:30:00',
     capacity: 20,
     price: 1500,
+    teacher_id: 'teacher-1',
     is_active: true,
     created_at: '2026-01-01T00:00:00Z',
+    teacher: { id: 'teacher-1', full_name: 'Jane Smith' },
   },
   teacher: { id: 'teacher-1', full_name: 'Jane Smith' },
   confirmed_count: 5,
