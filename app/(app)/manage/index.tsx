@@ -182,15 +182,22 @@ function TimetableTab() {
       if (error) throw error;
 
       // Propagate the leader change to already-generated future sessions so
-      // existing bookings reflect the new leader. New sessions inherit
-      // automatically via generate_sessions_ahead.
+      // existing bookings reflect the new leader. Only touch sessions that
+      // are still inheriting the previous template teacher (or have null) —
+      // sessions with an explicit per-session override (substitute teacher)
+      // must be preserved. New sessions inherit via generate_sessions_ahead.
       if (teacherChanged) {
         const today = new Date().toISOString().split('T')[0];
-        const { error: sessionError } = await supabase
+        const previousTeacherId = editingTemplate.default_teacher?.id ?? null;
+        let query = supabase
           .from('class_sessions')
           .update({ teacher_id: editTeacher?.id ?? null })
           .eq('template_id', editingTemplate.id)
           .gte('session_date', today);
+        query = previousTeacherId
+          ? query.or(`teacher_id.eq.${previousTeacherId},teacher_id.is.null`)
+          : query.is('teacher_id', null);
+        const { error: sessionError } = await query;
         if (sessionError) throw sessionError;
       }
     },
