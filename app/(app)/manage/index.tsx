@@ -186,11 +186,12 @@ function TimetableTab() {
       // automatically via generate_sessions_ahead.
       if (teacherChanged) {
         const today = new Date().toISOString().split('T')[0];
-        await supabase
+        const { error: sessionError } = await supabase
           .from('class_sessions')
           .update({ teacher_id: editTeacher?.id ?? null })
           .eq('template_id', editingTemplate.id)
           .gte('session_date', today);
+        if (sessionError) throw sessionError;
       }
     },
     onSuccess: () => {
