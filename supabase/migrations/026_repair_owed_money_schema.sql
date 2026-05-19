@@ -483,7 +483,7 @@ begin
     limit 1
   ) m on true
   order by
-    get_user_owed_amount(p.id) desc,
+    owed_amount desc,
     coalesce(lc.cnt, 0) desc,
     p.full_name asc;
 end;
