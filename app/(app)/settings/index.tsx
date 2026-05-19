@@ -160,7 +160,7 @@ export default function SettingsScreen() {
         <Card>
           <Text style={styles.sectionTitle}>About</Text>
           <Text style={styles.sectionDesc}>Switch-Kick Mafia · v1.0.0</Text>
-          <Text style={[styles.sectionDesc, { marginTop: 4 }]}>Built for the SKM family 🥊</Text>
+          <Text style={[styles.sectionDesc, { marginTop: 4 }]}>Built for SKM</Text>
         </Card>
 
         {/* Sign out */}
