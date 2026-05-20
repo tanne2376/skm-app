@@ -12,13 +12,16 @@ interface SessionCardProps {
   session: ClassSessionWithDetails;
   onBook: () => void;
   onCancel: () => void;
+  onClaim: () => void;
   isMutating?: boolean;
   isAdmin?: boolean;
   freeWithMembership?: boolean;
   isBlockedFromBooking?: boolean;
 }
 
-export function SessionCard({ session, onBook, onCancel, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false }: SessionCardProps) {
+const CLAIM_WINDOW_MS = 60 * 60 * 1000;
+
+export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false }: SessionCardProps) {
   const { data: defaultLeaderName } = useDefaultClassLeaderName();
   const now = new Date();
   const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
@@ -140,22 +143,70 @@ export function SessionCard({ session, onBook, onCancel, isMutating = false, isA
             </View>
           )}
 
-          {/* Waitlisted → show position + leave */}
-          {userBooking?.status === 'waitlisted' && (
-            <View style={styles.waitlistRow}>
-              <Text style={styles.waitlistPosition}>
-                #{userBooking.waitlist_position} on waitlist
-              </Text>
-              <Button
-                variant="ghost"
-                size="sm"
-                onPress={onCancel}
-                loading={isMutating}
-              >
-                Leave Waitlist
-              </Button>
-            </View>
-          )}
+          {/* Waitlisted with active claim window → claim button */}
+          {userBooking?.status === 'waitlisted' && (() => {
+            const startedAt = userBooking.claim_window_started_at
+              ? new Date(userBooking.claim_window_started_at).getTime()
+              : null;
+            const claimActive =
+              startedAt !== null && Date.now() - startedAt < CLAIM_WINDOW_MS;
+            if (!claimActive) return null;
+            const minutesLeft = Math.max(
+              1,
+              Math.ceil((CLAIM_WINDOW_MS - (Date.now() - startedAt!)) / 60000),
+            );
+            return (
+              <View style={styles.claimBox}>
+                <Text style={styles.claimTitle}>A spot just opened up!</Text>
+                <Text style={styles.claimSub}>
+                  Claim within {minutesLeft} min or it rolls to the next person.
+                </Text>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onPress={onClaim}
+                  loading={isMutating}
+                  style={styles.actionButton}
+                >
+                  Claim my spot
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onPress={onCancel}
+                  loading={isMutating}
+                  style={styles.actionButton}
+                >
+                  Leave Waitlist
+                </Button>
+              </View>
+            );
+          })()}
+
+          {/* Waitlisted without an active claim → position + leave */}
+          {userBooking?.status === 'waitlisted' && (() => {
+            const startedAt = userBooking.claim_window_started_at
+              ? new Date(userBooking.claim_window_started_at).getTime()
+              : null;
+            const claimActive =
+              startedAt !== null && Date.now() - startedAt < CLAIM_WINDOW_MS;
+            if (claimActive) return null;
+            return (
+              <View style={styles.waitlistRow}>
+                <Text style={styles.waitlistPosition}>
+                  #{userBooking.waitlist_position} on waitlist
+                </Text>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onPress={onCancel}
+                  loading={isMutating}
+                >
+                  Leave Waitlist
+                </Button>
+              </View>
+            );
+          })()}
         </View>
       )}
 
@@ -183,6 +234,16 @@ const styles = StyleSheet.create({
   spots: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
   spotsFull: { color: COLORS.accent },
   waitlistPosition: { color: COLORS.warning, fontSize: 13, flex: 1 },
+  claimBox: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+    padding: 12,
+    gap: 8,
+  },
+  claimTitle: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
+  claimSub: { color: COLORS.grey[300], fontSize: 12 },
   noRefundWarning: { color: COLORS.warning, fontSize: 12, marginBottom: 6 },
   blockedWarning: { color: COLORS.error, fontSize: 12, fontWeight: '600' },
   pastLabel: { color: COLORS.grey[600], fontSize: 12, marginTop: 8 },

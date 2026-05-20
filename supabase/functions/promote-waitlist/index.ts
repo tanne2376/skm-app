@@ -1,8 +1,26 @@
-import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
+// JWT: ❌ (called from cancel-booking with service-role)
+//
+// Offer a now-vacant spot to the next eligible waitlister.
+//
+// Auto-charge is intentionally gone. The waitlister claims the spot
+// manually via `claim-waitlist-spot` within a 1-hour window. If they
+// don't, the next promotion call rotates them to the back of the
+// queue and offers the spot to the next person.
+//
+// Called when:
+//   1. A confirmed booking is cancelled (cancel-booking invokes us)
+//   2. An admin-driven session change reopens capacity
+//
+// For each open seat (effective_capacity - confirmed_count) we
+// either find a waitlister with an unexpired active claim
+// (nothing to do — they already have the offer), expire stale
+// claims, or assign a fresh claim to the next eligible person.
+
+import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient } from '../_shared/supabase.ts';
-import { stripe } from '../_shared/stripe.ts';
-import { membershipWeekStart } from '../_shared/membershipWeek.ts';
 import { notify } from '../_shared/notify.ts';
+
+const CLAIM_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -11,155 +29,131 @@ Deno.serve(async (req) => {
 
   const adminClient = createAdminClient();
 
-  // Get session details
   const { data: session } = await adminClient
     .from('class_sessions')
-    .select('*, class_templates(name)')
+    .select('*, class_templates(name, capacity)')
     .eq('id', sessionId)
     .single();
 
   if (!session) return errorResponse('Session not found', 404);
 
-  // Get waitlisted bookings in order
+  const capacity =
+    (session as any).capacity ?? (session as any).class_templates?.capacity ?? 20;
+
+  // Live confirmed bookings
+  const { count: confirmedCount } = await adminClient
+    .from('bookings')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('status', 'confirmed');
+
+  const openSpots = Math.max(0, capacity - (confirmedCount ?? 0));
+  if (openSpots === 0) {
+    return jsonResponse({ offered: 0, message: 'No open spots' });
+  }
+
+  // Fetch waitlisted bookings ordered by current position
   const { data: waitlisted } = await adminClient
     .from('bookings')
-    .select('*, profiles(id, stripe_customer_id, push_token)')
+    .select('id, student_id, waitlist_position, claim_window_started_at')
     .eq('session_id', sessionId)
     .eq('status', 'waitlisted')
     .order('waitlist_position', { ascending: true });
 
   if (!waitlisted || waitlisted.length === 0) {
-    return jsonResponse({ promoted: false, message: 'No one on waitlist' });
+    return jsonResponse({ offered: 0, message: 'No one on waitlist' });
   }
 
-  const sessionPrice = session.price ?? null;
-  const { data: priceData } = await adminClient.rpc('get_session_price', { p_session_id: sessionId });
-  const amountPence: number = priceData ?? 1500;
+  const now = Date.now();
+  const sessionName = (session as any).class_templates?.name ?? 'Class';
 
-  for (const booking of waitlisted) {
-    const student = (booking as any).profiles;
-    const sessionName = (session as any).class_templates?.name ?? 'Class';
+  // Rotate stale (>1hr) offers to the back of the queue.
+  // Bumping their waitlist_position past max ensures they fall to the
+  // end without colliding with anyone else's position.
+  const maxPos = waitlisted.reduce(
+    (m, b) => Math.max(m, b.waitlist_position ?? 0),
+    0,
+  );
+  let nextBackPos = maxPos + 1;
+  const rotatedIds: string[] = [];
+  for (const b of waitlisted) {
+    if (!b.claim_window_started_at) continue;
+    const startedAt = new Date(b.claim_window_started_at).getTime();
+    if (now - startedAt >= CLAIM_WINDOW_MS) {
+      await adminClient
+        .from('bookings')
+        .update({
+          claim_window_started_at: null,
+          waitlist_position: nextBackPos,
+        })
+        .eq('id', b.id);
+      rotatedIds.push(b.id);
+      nextBackPos++;
+    }
+  }
 
-    // Skip blocked users (fail closed — if RPC errors, treat as blocked)
-    const { data: isBlocked, error: blockedError } = await adminClient.rpc('is_user_booking_blocked', { p_user_id: booking.student_id });
-    if (blockedError || isBlocked) continue;
+  // Re-read with the new ordering after rotation. We only need to
+  // refetch if anything actually rotated.
+  let queue = waitlisted;
+  if (rotatedIds.length > 0) {
+    const { data: refetched } = await adminClient
+      .from('bookings')
+      .select('id, student_id, waitlist_position, claim_window_started_at')
+      .eq('session_id', sessionId)
+      .eq('status', 'waitlisted')
+      .order('waitlist_position', { ascending: true });
+    queue = refetched ?? [];
+  }
 
-    // Check if student has active membership
-    const { data: membership } = await adminClient
-      .from('memberships')
-      .select('*')
-      .eq('student_id', booking.student_id)
-      .eq('status', 'active')
-      .maybeSingle();
+  // Assign offers up to openSpots. Skip waitlisters who already have
+  // an active (non-expired) claim — they were already offered.
+  let offered = 0;
+  let assigned = 0;
+  const newlyOffered: string[] = [];
 
-    let promoted = false;
+  for (const b of queue) {
+    if (offered >= openSpots) break;
 
-    if (membership) {
-      // Check quota for 2x/week
-      if (membership.tier === 'unlimited') {
-        // Free promotion
-        await promoteBooking(adminClient, booking.id, 'membership', 'paid');
-        promoted = true;
-      } else {
-        // two_per_week — check quota
-        const weekStart = membershipWeekStart(session.session_date, session.start_time);
-        const { count } = await adminClient
-          .from('membership_weekly_usage')
-          .select('id', { count: 'exact', head: true })
-          .eq('membership_id', membership.id)
-          .eq('week_start', weekStart);
+    const hasActiveClaim =
+      b.claim_window_started_at &&
+      now - new Date(b.claim_window_started_at).getTime() < CLAIM_WINDOW_MS;
 
-        if ((count ?? 0) < 2) {
-          await promoteBooking(adminClient, booking.id, 'membership', 'paid');
-          await adminClient.from('membership_weekly_usage').insert({
-            membership_id: membership.id,
-            student_id: booking.student_id,
-            booking_id: booking.id,
-            week_start: weekStart,
-          });
-          promoted = true;
-        }
-        // else: quota exceeded — skip to next
-      }
-    } else if (student?.stripe_customer_id) {
-      // Try to charge their saved card
-      try {
-        // Find their default payment method
-        const customer = await stripe.customers.retrieve(student.stripe_customer_id) as any;
-        const defaultPm = customer.invoice_settings?.default_payment_method;
-        if (!defaultPm) continue; // no saved card — skip
-
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: amountPence,
-          currency: 'gbp',
-          customer: student.stripe_customer_id,
-          payment_method: defaultPm,
-          confirm: true,
-          off_session: true,
-          description: `Waitlist promotion: ${sessionName}`,
-          metadata: {
-            booking_type: 'class',
-            session_id: sessionId,
-            student_id: booking.student_id,
-            booking_id: booking.id,
-          },
-        });
-
-        if (paymentIntent.status === 'succeeded') {
-          await adminClient
-            .from('bookings')
-            .update({ stripe_payment_intent_id: paymentIntent.id })
-            .eq('id', booking.id);
-          await promoteBooking(adminClient, booking.id, 'app', 'paid');
-          promoted = true;
-        }
-      } catch (e) {
-        console.error(`Charge failed for student ${booking.student_id}:`, e);
-        // Skip to next — failed charge
-        continue;
-      }
-    } else {
-      // No membership, no saved card — skip
+    if (hasActiveClaim) {
+      offered++;
       continue;
     }
 
-    if (promoted) {
-      // Decrement waitlist positions for remaining waitlisted students
-      await adminClient.rpc('decrement_waitlist_positions', {
-        p_session_id: sessionId,
-        p_min_position: booking.waitlist_position,
-      });
+    // Assign a fresh claim to this person.
+    const { error: assignError } = await adminClient
+      .from('bookings')
+      .update({ claim_window_started_at: new Date().toISOString() })
+      .eq('id', b.id);
+    if (assignError) {
+      console.error(`[promote-waitlist] failed to assign claim ${b.id}:`, assignError.message);
+      continue;
+    }
+    newlyOffered.push(b.student_id);
+    offered++;
+    assigned++;
 
-      // Send push notification
+    try {
       await notify({
         adminClient,
-        userId: booking.student_id,
+        userId: b.student_id,
         type: 'waitlist_promotion',
-        title: 'You\'re in!',
-        body: `A spot opened up for ${sessionName}. Your booking is confirmed.`,
-        data: { sessionId },
+        title: 'A spot opened up!',
+        body: `${sessionName} on ${session.session_date} has a spot for you. Claim it within 1 hour or it rolls to the next person.`,
+        data: { sessionId, bookingId: b.id },
       });
-
-      return jsonResponse({ promoted: true, studentId: booking.student_id });
+    } catch (err) {
+      console.error('[promote-waitlist] notify failed', err);
     }
   }
 
-  return jsonResponse({ promoted: false, message: 'No eligible waitlisted students' });
+  return jsonResponse({
+    offered,
+    assigned,
+    rotated: rotatedIds.length,
+    newlyOfferedStudentIds: newlyOffered,
+  });
 });
-
-async function promoteBooking(
-  adminClient: any,
-  bookingId: string,
-  paymentMethod: string,
-  paymentStatus: string,
-) {
-  await adminClient
-    .from('bookings')
-    .update({
-      status: 'confirmed',
-      payment_method: paymentMethod,
-      payment_status: paymentStatus,
-      waitlist_position: null,
-    })
-    .eq('id', bookingId);
-}

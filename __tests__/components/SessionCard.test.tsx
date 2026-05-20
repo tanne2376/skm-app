@@ -47,13 +47,13 @@ describe('SessionCard', () => {
   const noop = jest.fn();
 
   it('renders class name and time', () => {
-    render(<SessionCard session={base} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={base} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Muay Thai (Beginners)')).toBeTruthy();
     expect(screen.getByText(/18:30/)).toBeTruthy();
   });
 
   it('shows Book button when not booked and spots available', () => {
-    render(<SessionCard session={base} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={base} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Book')).toBeTruthy();
   });
 
@@ -69,11 +69,12 @@ describe('SessionCard', () => {
         payment_status: 'paid',
         stripe_payment_intent_id: null,
         waitlist_position: null,
+        claim_window_started_at: null,
         booked_at: '2026-01-01T00:00:00Z',
         cancelled_at: null,
       },
     };
-    render(<SessionCard session={withBooking} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={withBooking} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Confirmed')).toBeTruthy();
     expect(screen.getByText(/Cancel Booking/i)).toBeTruthy();
   });
@@ -91,11 +92,12 @@ describe('SessionCard', () => {
         payment_status: 'pending',
         stripe_payment_intent_id: null,
         waitlist_position: 3,
+        claim_window_started_at: null,
         booked_at: '2026-01-01T00:00:00Z',
         cancelled_at: null,
       },
     };
-    render(<SessionCard session={waitlisted} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={waitlisted} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText(/#3 on waitlist/i)).toBeTruthy();
   });
 
@@ -104,7 +106,7 @@ describe('SessionCard', () => {
       ...base,
       confirmed_count: 20,
     };
-    render(<SessionCard session={full} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={full} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Full')).toBeTruthy();
     expect(screen.getByText(/Add to Waitlist/i)).toBeTruthy();
   });
@@ -115,7 +117,7 @@ describe('SessionCard', () => {
       is_cancelled: true,
       cancellation_reason: 'Instructor unavailable',
     };
-    render(<SessionCard session={cancelled} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={cancelled} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Cancelled')).toBeTruthy();
     expect(screen.getByText('Instructor unavailable')).toBeTruthy();
   });
@@ -139,11 +141,12 @@ describe('SessionCard', () => {
         payment_status: 'paid',
         stripe_payment_intent_id: null,
         waitlist_position: null,
+        claim_window_started_at: null,
         booked_at: '2026-01-01T00:00:00Z',
         cancelled_at: null,
       },
     };
-    render(<SessionCard session={withBooking} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={withBooking} onBook={noop} onCancel={noop} onClaim={noop} />);
     // Both the warning label and the cancel button mention "no refund"
     expect(screen.getAllByText(/no refund/i).length).toBeGreaterThanOrEqual(1);
   });
@@ -154,14 +157,14 @@ describe('SessionCard', () => {
       session_date: '2000-01-01',
       start_time: '10:00:00',
     };
-    render(<SessionCard session={past} onBook={noop} onCancel={noop} />);
+    render(<SessionCard session={past} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText(/ended/i)).toBeTruthy();
     expect(screen.queryByText(/Pay/i)).toBeNull();
   });
 
   it('calls onBook when Pay button is pressed', () => {
     const onBook = jest.fn();
-    render(<SessionCard session={base} onBook={onBook} onCancel={noop} />);
+    render(<SessionCard session={base} onBook={onBook} onCancel={noop} onClaim={noop} />);
     fireEvent.press(screen.getByText('Book'));
     expect(onBook).toHaveBeenCalledTimes(1);
   });

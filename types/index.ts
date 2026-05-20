@@ -86,6 +86,7 @@ export interface Booking {
   payment_status: PaymentStatus;
   stripe_payment_intent_id: string | null;
   waitlist_position: number | null;
+  claim_window_started_at: string | null;
   booked_at: string;
   cancelled_at: string | null;
 }
