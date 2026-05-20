@@ -28,7 +28,7 @@ import { getClassLeaderName } from '@/lib/teacherName';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { useBookingBlocked } from '@/hooks/useLateCancellations';
-import { supabase } from '@/lib/supabase';
+import { supabase, invokeFunction } from '@/lib/supabase';
 import { ClassSessionWithDetails, PaymentMethod, BookingWithStudent } from '@/types';
 import { PaymentStatusBadge } from '@/components/ui/Badge';
 
@@ -275,13 +275,26 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
 
   const cancelSession = useMutation({
     mutationFn: async (reason: string) => {
-      const { error } = await supabase
-        .from('class_sessions')
-        .update({ is_cancelled: true, cancellation_reason: reason })
-        .eq('id', session.id);
-      if (error) throw error;
+      const { data, error } = await invokeFunction<{
+        cancelled?: boolean; refundCount?: number; membershipSlotsReleased?: number;
+      }>('cancel-class-session', { sessionId: session.id, reason });
+      if (error) throw new Error(error.message ?? 'Failed to cancel session.');
+      return data!;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['class_sessions'] }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
+      const refunds = data?.refundCount ?? 0;
+      const slots = data?.membershipSlotsReleased ?? 0;
+      if (refunds || slots) {
+        Alert.alert(
+          'Session cancelled',
+          [
+            refunds && `${refunds} student${refunds === 1 ? '' : 's'} refunded`,
+            slots && `${slots} membership slot${slots === 1 ? '' : 's'} returned`,
+          ].filter(Boolean).join(' · '),
+        );
+      }
+    },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
