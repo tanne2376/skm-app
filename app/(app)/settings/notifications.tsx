@@ -23,6 +23,7 @@ const notificationOptions: NotifOption[] = [
   { type: 'one_to_one_booked', label: '1-to-1 booked', description: 'When someone books your 1-to-1 session', roles: ['teacher', 'admin'] },
   { type: 'class_full', label: 'Class full', description: 'When one of your classes reaches capacity', roles: ['teacher', 'admin'] },
   { type: 'class_time_changed', label: 'Class time changed', description: 'When a class you\'ve booked has its time changed', roles: ['student', 'teacher'] },
+  { type: 'class_cancelled', label: 'Class cancelled', description: 'When a class you\'ve booked is cancelled by the admin', roles: ['student', 'teacher'] },
   { type: 'membership_renewal', label: 'Membership renewal', description: 'Reminder before your membership auto-renews', roles: ['student', 'teacher'] },
 ];
 

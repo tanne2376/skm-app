@@ -16,6 +16,7 @@ type NotificationType =
   | 'one_to_one_booked'
   | 'class_full'
   | 'class_time_changed'
+  | 'class_cancelled'
   | 'membership_renewal'
   | 'block_activated';
 

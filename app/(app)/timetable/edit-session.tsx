@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, Alert, Switch, TouchableOpacity, FlatList, Modal,
+  View, Text, TextInput, StyleSheet, ScrollView, Alert, TouchableOpacity, FlatList, Modal, Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +30,8 @@ export default function EditSessionScreen() {
   const [cancellationReason, setCancellationReason] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState<Pick<Profile, 'id' | 'full_name'> | null>(null);
   const [showTeacherPicker, setShowTeacherPicker] = useState(false);
+  const [showCancelInput, setShowCancelInput] = useState(false);
+  const [pendingReason, setPendingReason] = useState('');
 
   const { data: existingSession } = useQuery({
     queryKey: ['class_session', sessionId],
@@ -92,6 +94,8 @@ export default function EditSessionScreen() {
       if (!endTime.match(/^\d{2}:\d{2}$/)) throw new Error('End time must be HH:MM.');
 
       const tid = templateId ?? (existingSession as any)?.template_id;
+      // Cancellation is handled by the dedicated cancel-class-session edge
+      // function so the save form only touches editable fields.
       const payload = {
         template_id: tid,
         teacher_id: selectedTeacher?.id ?? null,
@@ -100,8 +104,6 @@ export default function EditSessionScreen() {
         end_time: endTime,
         capacity: capacityOverride ? parseInt(capacityOverride, 10) : null,
         price: priceOverride ? Math.round(parseFloat(priceOverride) * 100) : null,
-        is_cancelled: isCancelled,
-        cancellation_reason: isCancelled ? (cancellationReason.trim() || null) : null,
       };
 
       if (sessionId) {
@@ -134,6 +136,59 @@ export default function EditSessionScreen() {
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
+
+  const cancelMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!sessionId) throw new Error('Session must be saved before cancelling.');
+      const { data, error } = await invokeFunction<{
+        cancelled?: boolean;
+        refundCount?: number;
+        refundErrors?: number;
+        membershipSlotsReleased?: number;
+      }>('cancel-class-session', { sessionId, reason });
+      if (error) throw new Error(error.message ?? 'Failed to cancel session.');
+      return data!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['class_session', sessionId] });
+      const refunds = data?.refundCount ?? 0;
+      const errors = data?.refundErrors ?? 0;
+      const slots = data?.membershipSlotsReleased ?? 0;
+      const summary = [
+        refunds && `${refunds} student${refunds === 1 ? '' : 's'} refunded`,
+        slots && `${slots} membership slot${slots === 1 ? '' : 's'} returned`,
+      ].filter(Boolean).join(' · ') || 'Students have been notified.';
+      const warning = errors
+        ? `\n\n⚠️ ${errors} refund${errors === 1 ? '' : 's'} failed — issue ${errors === 1 ? 'it' : 'them'} manually in Stripe.`
+        : '';
+      Alert.alert('Session cancelled', `${summary}${warning}`, [{ text: 'OK', onPress: () => router.back() }]);
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  function handleCancelPress() {
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Cancel Session',
+        'Enter a reason (shown to students):',
+        [
+          { text: 'Back', style: 'cancel' },
+          {
+            text: 'Cancel Session',
+            style: 'destructive',
+            onPress: (reason?: string) =>
+              cancelMutation.mutate(reason?.trim() || 'Session cancelled'),
+          },
+        ],
+        'plain-text',
+        '',
+      );
+    } else {
+      setPendingReason('');
+      setShowCancelInput(true);
+    }
+  }
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
@@ -175,28 +230,63 @@ export default function EditSessionScreen() {
           </Field>
         </Card>
 
-        <Card>
-          <View style={styles.cancelRow}>
+        {sessionId && isCancelled ? (
+          <Card>
+            <Text style={styles.cancelledNotice}>This session has been cancelled.</Text>
+            {cancellationReason ? (
+              <Text style={styles.cancelledReason}>Reason: {cancellationReason}</Text>
+            ) : null}
+          </Card>
+        ) : sessionId ? (
+          <Card>
             <Text style={styles.cancelLabel}>Cancel this session</Text>
-            <Switch
-              value={isCancelled}
-              onValueChange={setIsCancelled}
-              trackColor={{ false: COLORS.grey[700], true: COLORS.error }}
-              thumbColor={COLORS.white}
-            />
-          </View>
-          {isCancelled && (
-            <Field label="Cancellation Reason (optional)">
+            <Text style={styles.cancelHelp}>
+              Refunds every app-paid booking, returns membership slots, and notifies booked students.
+            </Text>
+            <Button
+              variant="danger"
+              size="md"
+              onPress={handleCancelPress}
+              loading={cancelMutation.isPending}
+              style={{ marginTop: 12 }}
+            >
+              Cancel session
+            </Button>
+          </Card>
+        ) : null}
+
+        {/* Android cancel-reason modal (iOS uses Alert.prompt) */}
+        <Modal visible={showCancelInput} animationType="fade" transparent onRequestClose={() => setShowCancelInput(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <Text style={styles.modalTitle}>Cancel Session</Text>
+              <Text style={styles.modalSubtitle}>Enter a reason (shown to students):</Text>
               <TextInput
                 style={styles.input}
-                value={cancellationReason}
-                onChangeText={setCancellationReason}
+                value={pendingReason}
+                onChangeText={setPendingReason}
                 placeholder="e.g. Instructor unavailable"
                 placeholderTextColor={COLORS.grey[600]}
+                autoFocus
               />
-            </Field>
-          )}
-        </Card>
+              <View style={styles.modalActions}>
+                <Button variant="secondary" size="sm" onPress={() => setShowCancelInput(false)}>
+                  Back
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onPress={() => {
+                    setShowCancelInput(false);
+                    cancelMutation.mutate(pendingReason.trim() || 'Session cancelled');
+                  }}
+                >
+                  Cancel Session
+                </Button>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Button variant="primary" size="lg" onPress={() => saveMutation.mutate()} loading={saveMutation.isPending}>
           Save Session Override
@@ -280,8 +370,11 @@ const styles = StyleSheet.create({
   picker: { backgroundColor: COLORS.grey[800], borderRadius: 8, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1, borderColor: COLORS.grey[700] },
   pickerSelected: { color: COLORS.white, fontSize: 15 },
   pickerPlaceholder: { color: COLORS.grey[600], fontSize: 15 },
-  cancelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   cancelLabel: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  cancelHelp: { color: COLORS.grey[600], fontSize: 13, marginTop: 6, lineHeight: 18 },
+  cancelledNotice: { color: COLORS.error, fontSize: 15, fontWeight: '700' },
+  cancelledReason: { color: COLORS.grey[400], fontSize: 13, marginTop: 6 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: COLORS.grey[900], borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '60%' },
   modalTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 4 },
