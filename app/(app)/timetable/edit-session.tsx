@@ -141,7 +141,10 @@ export default function EditSessionScreen() {
     mutationFn: async (reason: string) => {
       if (!sessionId) throw new Error('Session must be saved before cancelling.');
       const { data, error } = await invokeFunction<{
-        cancelled?: boolean; refundCount?: number; membershipSlotsReleased?: number;
+        cancelled?: boolean;
+        refundCount?: number;
+        refundErrors?: number;
+        membershipSlotsReleased?: number;
       }>('cancel-class-session', { sessionId, reason });
       if (error) throw new Error(error.message ?? 'Failed to cancel session.');
       return data!;
@@ -150,12 +153,16 @@ export default function EditSessionScreen() {
       queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
       queryClient.invalidateQueries({ queryKey: ['class_session', sessionId] });
       const refunds = data?.refundCount ?? 0;
+      const errors = data?.refundErrors ?? 0;
       const slots = data?.membershipSlotsReleased ?? 0;
       const summary = [
         refunds && `${refunds} student${refunds === 1 ? '' : 's'} refunded`,
         slots && `${slots} membership slot${slots === 1 ? '' : 's'} returned`,
       ].filter(Boolean).join(' · ') || 'Students have been notified.';
-      Alert.alert('Session cancelled', summary, [{ text: 'OK', onPress: () => router.back() }]);
+      const warning = errors
+        ? `\n\n⚠️ ${errors} refund${errors === 1 ? '' : 's'} failed — issue ${errors === 1 ? 'it' : 'them'} manually in Stripe.`
+        : '';
+      Alert.alert('Session cancelled', `${summary}${warning}`, [{ text: 'OK', onPress: () => router.back() }]);
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });

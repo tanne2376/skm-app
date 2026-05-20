@@ -9,8 +9,10 @@
 //   - waitlisted: set status=cancelled (never paid)
 // Finally, send a class_cancelled push to each booked student.
 //
-// Idempotent: a conditional UPDATE guards the session flip, so two
-// concurrent calls cannot both run the refund loop.
+// Idempotent: the cleanup loop is naturally re-runnable (already-
+// refunded bookings, deleted weekly_usage rows, and cancelled
+// waitlist rows are all no-ops on retry). The session-flip UPDATE
+// is conditional on is_cancelled=false so we only notify once.
 
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
@@ -59,7 +61,14 @@ Deno.serve(async (req) => {
     return errorResponse('Forbidden', 403);
   }
 
-  // Idempotency guard: only one caller flips is_cancelled false→true.
+  // Flip session cancelled. The conditional UPDATE returns 0 rows on a
+  // retry (session already cancelled by a prior call). We DON'T early-
+  // return on that case — instead we re-run the cleanup loop below,
+  // which is naturally idempotent (refunded bookings carry
+  // payment_status='refunded' and are skipped; already-cancelled
+  // waitlist rows fall out of the status filter; delete-by-id is a
+  // no-op when the row is gone). This lets a partially-failed cleanup
+  // be retried safely without schema changes.
   const { data: flipped } = await adminClient
     .from('class_sessions')
     .update({
@@ -70,14 +79,12 @@ Deno.serve(async (req) => {
     .eq('is_cancelled', false)
     .select('id');
 
-  if (!flipped?.length) {
-    return jsonResponse({ already_cancelled: true });
-  }
+  const isFirstCall = (flipped?.length ?? 0) > 0;
 
   // Past sessions don't trigger refunds — admin is just recording history.
-  // Naive comparison mirrors the rest of the codebase (CLAUDE.md: session
-  // times stored without offset; no UTC conversion needed).
-  const sessionEnd = new Date(`${session.session_date}T${session.end_time}Z`);
+  // Naive local-time parse per CLAUDE.md: session times are stored without
+  // offset, edge functions run in UTC.
+  const sessionEnd = new Date(`${session.session_date}T${session.end_time}`);
   const isPast = sessionEnd.getTime() <= Date.now();
 
   const { data: bookings } = await adminClient
@@ -113,17 +120,19 @@ Deno.serve(async (req) => {
           payment_intent: b.stripe_payment_intent_id,
           reason: 'requested_by_customer',
         });
+        // Only flip the booking to 'refunded' on Stripe success — the
+        // row should accurately reflect the customer's bank state, not
+        // our intent. Failures stay 'paid' and the admin sees the
+        // refundErrors count in the cancel toast to reconcile manually.
+        await adminClient
+          .from('bookings')
+          .update({ payment_status: 'refunded' })
+          .eq('id', b.id);
         refundCount++;
       } catch (e) {
         console.error(`[cancel-class-session] refund failed for booking ${b.id}:`, e);
         refundErrors++;
       }
-      // Mark as refunded either way — failures need admin review but the
-      // session is already cancelled, so the booking can't stay 'paid'.
-      await adminClient
-        .from('bookings')
-        .update({ payment_status: 'refunded' })
-        .eq('id', b.id);
     } else if (b.payment_method === 'membership') {
       const { error: relErr } = await adminClient
         .from('membership_weekly_usage')
@@ -133,26 +142,34 @@ Deno.serve(async (req) => {
     }
   }
 
-  const sessionName = (session as any).class_templates?.name ?? 'Class';
-  const friendlyReason = reason ? ` Reason: ${reason}` : '';
-  try {
-    await notifyMany({
-      adminClient,
-      userIds: Array.from(studentIds),
-      type: 'class_cancelled',
-      title: 'Class cancelled',
-      body: `${sessionName} on ${session.session_date} has been cancelled.${friendlyReason}`,
-      data: { sessionId },
-    });
-  } catch (err) {
-    console.error('[cancel-class-session] notification failed', err);
+  // Only notify on the first call. Retries that mop up unprocessed
+  // bookings shouldn't spam students with duplicate "class cancelled"
+  // pushes — the recipients already got one on the original call.
+  let notified = 0;
+  if (isFirstCall) {
+    const sessionName = (session as any).class_templates?.name ?? 'Class';
+    const friendlyReason = reason ? ` Reason: ${reason}` : '';
+    try {
+      await notifyMany({
+        adminClient,
+        userIds: Array.from(studentIds),
+        type: 'class_cancelled',
+        title: 'Class cancelled',
+        body: `${sessionName} on ${session.session_date} has been cancelled.${friendlyReason}`,
+        data: { sessionId },
+      });
+      notified = studentIds.size;
+    } catch (err) {
+      console.error('[cancel-class-session] notification failed', err);
+    }
   }
 
   return jsonResponse({
     cancelled: true,
+    retried: !isFirstCall,
     refundCount,
     refundErrors,
     membershipSlotsReleased,
-    notified: studentIds.size,
+    notified,
   });
 });

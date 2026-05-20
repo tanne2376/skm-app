@@ -276,7 +276,10 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   const cancelSession = useMutation({
     mutationFn: async (reason: string) => {
       const { data, error } = await invokeFunction<{
-        cancelled?: boolean; refundCount?: number; membershipSlotsReleased?: number;
+        cancelled?: boolean;
+        refundCount?: number;
+        refundErrors?: number;
+        membershipSlotsReleased?: number;
       }>('cancel-class-session', { sessionId: session.id, reason });
       if (error) throw new Error(error.message ?? 'Failed to cancel session.');
       return data!;
@@ -284,15 +287,17 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
       const refunds = data?.refundCount ?? 0;
+      const errors = data?.refundErrors ?? 0;
       const slots = data?.membershipSlotsReleased ?? 0;
-      if (refunds || slots) {
-        Alert.alert(
-          'Session cancelled',
-          [
-            refunds && `${refunds} student${refunds === 1 ? '' : 's'} refunded`,
-            slots && `${slots} membership slot${slots === 1 ? '' : 's'} returned`,
-          ].filter(Boolean).join(' · '),
-        );
+      if (refunds || slots || errors) {
+        const lines = [
+          refunds && `${refunds} student${refunds === 1 ? '' : 's'} refunded`,
+          slots && `${slots} membership slot${slots === 1 ? '' : 's'} returned`,
+        ].filter(Boolean).join(' · ');
+        const warning = errors
+          ? `\n\n⚠️ ${errors} refund${errors === 1 ? '' : 's'} failed — issue ${errors === 1 ? 'it' : 'them'} manually in Stripe.`
+          : '';
+        Alert.alert('Session cancelled', `${lines}${warning}`);
       }
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
