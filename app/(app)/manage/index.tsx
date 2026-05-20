@@ -697,7 +697,7 @@ function UsersTab() {
                         styles.userCancelCount,
                         item.late_cancellation_count >= 3 && styles.userCancelCountBlocked,
                       ]}>
-                        {item.late_cancellation_count}
+                        {item.late_cancellation_count} late cancellation{item.late_cancellation_count === 1 ? '' : 's'}
                       </Text>
                     )}
                     {item.is_blocked && <Badge label="Blocked" variant="error" />}
