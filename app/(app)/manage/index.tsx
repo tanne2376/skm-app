@@ -947,7 +947,7 @@ const styles = StyleSheet.create({
   userMeta: { color: COLORS.grey[400], fontSize: 13 },
   userOwed: { color: COLORS.error, fontSize: 13, fontWeight: '700', marginTop: 4 },
   userRight: { alignItems: 'flex-end', gap: 4 },
-  userCancelCount: { color: COLORS.warning, fontSize: 20, fontWeight: '800' },
+  userCancelCount: { color: COLORS.warning, fontSize: 13, fontWeight: '800' },
   userCancelCountBlocked: { color: COLORS.error },
 
   expandedSection: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.grey[800] },
