@@ -22,7 +22,7 @@ import { SessionCard } from '@/components/SessionCard';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
-import { useBookSession, useCancelBooking, useJoinWaitlist } from '@/hooks/useBookSession';
+import { useBookSession, useCancelBooking, useJoinWaitlist, useClaimWaitlistSpot } from '@/hooks/useBookSession';
 import { useDefaultClassLeaderName } from '@/hooks/useDefaultClassLeader';
 import { getClassLeaderName } from '@/lib/teacherName';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
@@ -55,8 +55,12 @@ export default function HomeScreen() {
   const bookSession = useBookSession();
   const cancelBooking = useCancelBooking();
   const joinWaitlist = useJoinWaitlist();
+  const claimSpot = useClaimWaitlistSpot();
 
   const [selectedSession, setSelectedSession] = useState<ClassSessionWithDetails | null>(null);
+  // When set, the payment-method modal routes the selection to the
+  // claim flow rather than the normal book flow.
+  const [claimingSession, setClaimingSession] = useState<ClassSessionWithDetails | null>(null);
 
   useRealtimeInvalidate('home-bookings', 'bookings', undefined, ['class_sessions']);
 
@@ -98,9 +102,37 @@ export default function HomeScreen() {
   }
 
   function handlePaymentSelect(method: PaymentMethod) {
+    // If we're in claim-flow, route the selection through claimSpot.
+    if (claimingSession?.user_booking) {
+      const booking = claimingSession.user_booking;
+      const target = claimingSession;
+      setClaimingSession(null);
+      claimSpot.mutate({
+        bookingId: booking.id,
+        paymentMethod: method,
+        membershipId: method === 'membership' ? membership?.id : undefined,
+        amount: target.effective_price,
+      });
+      return;
+    }
     if (!selectedSession) return;
     setSelectedSession(null);
     bookSession.mutate({ session: selectedSession, paymentMethod: method });
+  }
+
+  function handleClaim(session: ClassSessionWithDetails) {
+    if (!session.user_booking) return;
+    if (canUseMembership) {
+      // Membership users get a one-tap claim — no modal needed.
+      claimSpot.mutate({
+        bookingId: session.user_booking.id,
+        paymentMethod: 'membership',
+        membershipId: membership?.id,
+        amount: session.effective_price,
+      });
+      return;
+    }
+    setClaimingSession(session);
   }
 
   function handleCancel(session: ClassSessionWithDetails) {
@@ -142,7 +174,7 @@ export default function HomeScreen() {
     );
   }
 
-  const isMutating = bookSession.isPending || cancelBooking.isPending || joinWaitlist.isPending;
+  const isMutating = bookSession.isPending || cancelBooking.isPending || joinWaitlist.isPending || claimSpot.isPending;
 
   return (
     <View style={styles.container}>
@@ -168,6 +200,7 @@ export default function HomeScreen() {
               session={item}
               onBook={() => handleBookPress(item)}
               onCancel={() => handleCancel(item)}
+              onClaim={() => handleClaim(item)}
               isMutating={isMutating}
               freeWithMembership={canUseMembership}
               isBlockedFromBooking={isBlockedFromBooking}
@@ -184,19 +217,29 @@ export default function HomeScreen() {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
 
-      {/* Payment method modal (only when no membership) */}
+      {/* Payment method modal — used for both initial book and waitlist claim */}
       {!isAdmin && (
-        <SlideUpModal visible={!!selectedSession} onDismiss={() => setSelectedSession(null)}>
+        <SlideUpModal
+          visible={!!selectedSession || !!claimingSession}
+          onDismiss={() => { setSelectedSession(null); setClaimingSession(null); }}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{selectedSession?.class_templates?.name}</Text>
-            <Text style={styles.modalMeta}>
-              {selectedSession?.start_time?.slice(0, 5)}–{selectedSession?.end_time?.slice(0, 5)}
+            <Text style={styles.modalTitle}>
+              {(claimingSession ?? selectedSession)?.class_templates?.name}
             </Text>
+            <Text style={styles.modalMeta}>
+              {(claimingSession ?? selectedSession)?.start_time?.slice(0, 5)}–{(claimingSession ?? selectedSession)?.end_time?.slice(0, 5)}
+            </Text>
+            {claimingSession && (
+              <Text style={styles.modalClaimNote}>
+                Claiming your waitlist spot — choose how to pay.
+              </Text>
+            )}
             <View style={styles.modalBody}>
               <PaymentMethodSelector
-                price={selectedSession?.effective_price ?? 1500}
-                membership={null}
+                price={(claimingSession ?? selectedSession)?.effective_price ?? 1500}
+                membership={claimingSession && canUseMembership ? membership : null}
                 onSelect={handlePaymentSelect}
                 isLoading={isMutating}
               />
@@ -538,6 +581,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 4 },
   modalMeta: { color: COLORS.grey[400], fontSize: 14, marginBottom: 20 },
+  modalClaimNote: { color: COLORS.success, fontSize: 13, marginBottom: 12 },
   modalBody: { gap: 8 },
 
   rosterModal: { flex: 1, backgroundColor: COLORS.black },

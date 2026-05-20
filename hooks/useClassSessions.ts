@@ -21,7 +21,8 @@ export function useClassSessions(from: Date, to: Date) {
           class_templates (*, teacher:profiles!teacher_id (id, full_name)),
           teacher:profiles!teacher_id (id, full_name),
           bookings (id, student_id, status, payment_method, payment_status,
-                    stripe_payment_intent_id, waitlist_position, booked_at, cancelled_at)
+                    stripe_payment_intent_id, waitlist_position,
+                    claim_window_started_at, booked_at, cancelled_at)
         `)
         .gte('session_date', fromDate)
         .lte('session_date', toDate)

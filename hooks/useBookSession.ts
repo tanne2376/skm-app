@@ -148,6 +148,68 @@ export function useJoinWaitlist() {
   });
 }
 
+interface ClaimParams {
+  bookingId: string;
+  paymentMethod: PaymentMethod;
+  membershipId?: string;
+  amount: number; // pence, for PaymentSheet
+}
+
+export function useClaimWaitlistSpot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ bookingId, paymentMethod, membershipId, amount }: ClaimParams) => {
+      const { data, error } = await invokeFunction<{
+        confirmed?: boolean;
+        paymentMethod?: PaymentMethod;
+        clientSecret?: string;
+        customerId?: string;
+        ephemeralKeySecret?: string;
+      }>('claim-waitlist-spot', { bookingId, paymentMethod, membershipId });
+      if (error) throw new Error(error.message ?? 'Failed to claim spot.');
+
+      // Cash / membership confirmed server-side. App needs PaymentSheet.
+      if (paymentMethod !== 'app') return data!;
+
+      if (!data?.clientSecret || !data.customerId || !data.ephemeralKeySecret) {
+        throw new Error('Missing payment details from server.');
+      }
+
+      await initializePaymentSheet({
+        paymentIntentClientSecret: data.clientSecret,
+        customerEphemeralKeySecret: data.ephemeralKeySecret,
+        customerId: data.customerId,
+        amount,
+      });
+
+      const result = await openPaymentSheet();
+      if (!result.success) {
+        // Roll the booking back so the spot can rotate to the next
+        // waitlister. The server cancels the PaymentIntent on the
+        // cancel-booking path.
+        try {
+          await invokeFunction('cancel-booking', { bookingId });
+        } catch (cleanupError) {
+          console.error('Failed to roll back claim:', cleanupError);
+        }
+        throw new Error(result.error ?? 'Payment cancelled.');
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
+    },
+    onError: (error: Error) => {
+      if (!error.message.includes('Payment cancelled')) {
+        Alert.alert('Claim failed', error.message);
+      }
+    },
+  });
+}
+
 export function useCancelBooking() {
   const queryClient = useQueryClient();
 
