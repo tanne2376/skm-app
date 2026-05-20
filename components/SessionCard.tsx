@@ -99,7 +99,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
             </Button>
           )}
 
-          {/* Not booked, full → Add to Waitlist */}
+          {/* Not booked, full → Join Waiting List */}
           {!userBooking && isFull && !isBlockedFromBooking && (
             <Button
               variant="secondary"
@@ -108,7 +108,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
               loading={isMutating}
               style={styles.actionButton}
             >
-              Add to Waitlist
+              Join Waiting List
             </Button>
           )}
 
