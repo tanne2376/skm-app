@@ -101,6 +101,79 @@ describe('SessionCard', () => {
     expect(screen.getByText(/#3 on waitlist/i)).toBeTruthy();
   });
 
+  it('shows Claim my spot button when claim window is active', () => {
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const activeClaim: ClassSessionWithDetails = {
+      ...base,
+      confirmed_count: 20,
+      user_booking: {
+        id: 'b-claim-active',
+        session_id: 'session-1',
+        student_id: 'student-1',
+        status: 'waitlisted',
+        payment_method: 'app',
+        payment_status: 'pending',
+        stripe_payment_intent_id: null,
+        waitlist_position: 1,
+        claim_window_started_at: thirtyMinAgo,
+        booked_at: '2026-01-01T00:00:00Z',
+        cancelled_at: null,
+      },
+    };
+    render(<SessionCard session={activeClaim} onBook={noop} onCancel={noop} onClaim={noop} />);
+    expect(screen.getByText('Claim my spot')).toBeTruthy();
+    expect(screen.getByText(/Claim within \d+ min/i)).toBeTruthy();
+  });
+
+  it('falls back to waitlist position when claim window has expired', () => {
+    const overOneHourAgo = new Date(Date.now() - 65 * 60 * 1000).toISOString();
+    const expiredClaim: ClassSessionWithDetails = {
+      ...base,
+      confirmed_count: 20,
+      user_booking: {
+        id: 'b-claim-expired',
+        session_id: 'session-1',
+        student_id: 'student-1',
+        status: 'waitlisted',
+        payment_method: 'app',
+        payment_status: 'pending',
+        stripe_payment_intent_id: null,
+        waitlist_position: 2,
+        claim_window_started_at: overOneHourAgo,
+        booked_at: '2026-01-01T00:00:00Z',
+        cancelled_at: null,
+      },
+    };
+    render(<SessionCard session={expiredClaim} onBook={noop} onCancel={noop} onClaim={noop} />);
+    expect(screen.queryByText('Claim my spot')).toBeNull();
+    expect(screen.getByText(/#2 on waitlist/i)).toBeTruthy();
+  });
+
+  it('calls onClaim when Claim my spot button is pressed', () => {
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const onClaim = jest.fn();
+    const activeClaim: ClassSessionWithDetails = {
+      ...base,
+      confirmed_count: 20,
+      user_booking: {
+        id: 'b-claim-press',
+        session_id: 'session-1',
+        student_id: 'student-1',
+        status: 'waitlisted',
+        payment_method: 'app',
+        payment_status: 'pending',
+        stripe_payment_intent_id: null,
+        waitlist_position: 1,
+        claim_window_started_at: fifteenMinAgo,
+        booked_at: '2026-01-01T00:00:00Z',
+        cancelled_at: null,
+      },
+    };
+    render(<SessionCard session={activeClaim} onBook={noop} onCancel={noop} onClaim={onClaim} />);
+    fireEvent.press(screen.getByText('Claim my spot'));
+    expect(onClaim).toHaveBeenCalledTimes(1);
+  });
+
   it('shows Full + Join Waitlist when class is at capacity', () => {
     const full: ClassSessionWithDetails = {
       ...base,

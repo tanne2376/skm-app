@@ -186,12 +186,36 @@ Deno.serve(async (req) => {
 
     if (membership.tier === 'two_per_week') {
       const weekStart = membershipWeekStart(session.session_date, session.start_time);
-      await adminClient.from('membership_weekly_usage').insert({
-        membership_id: membershipId,
-        student_id: user.id,
-        booking_id: bookingId,
-        week_start: weekStart,
-      });
+      const { error: usageError } = await adminClient
+        .from('membership_weekly_usage')
+        .insert({
+          membership_id: membershipId,
+          student_id: user.id,
+          booking_id: bookingId,
+          week_start: weekStart,
+        });
+      if (usageError) {
+        // Revert the booking so the user keeps their queue spot and
+        // can retry. Without this revert the booking sits as
+        // confirmed+paid with no usage row — the student would
+        // effectively get a free class outside their weekly quota.
+        console.error(
+          `[claim-waitlist-spot] usage insert failed for booking ${bookingId}: ${usageError.message}`,
+        );
+        await adminClient
+          .from('bookings')
+          .update({
+            status: 'waitlisted',
+            payment_status: 'pending',
+            waitlist_position: booking.waitlist_position,
+            claim_window_started_at: booking.claim_window_started_at,
+          })
+          .eq('id', bookingId);
+        return errorResponse(
+          'Failed to record membership usage. Your claim is still active — please try again.',
+          500,
+        );
+      }
     }
 
     return jsonResponse({ confirmed: true, paymentMethod: 'membership' });
