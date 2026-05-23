@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet } from '@/lib/stripe';
+import { initializePaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
 import { scheduleClassReminder } from '@/lib/notifications';
 import { useAuth } from './useAuth';
 import { useActiveMembership } from './useActiveMembership';
@@ -82,7 +82,7 @@ export function useBookSession() {
             .from('bookings')
             .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
             .eq('stripe_payment_intent_id', clientSecret.split('_secret_')[0]);
-          throw new Error(result.error ?? 'Payment cancelled.');
+          throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
         }
 
         // Schedule local reminders (push handled server-side via webhook)
@@ -97,6 +97,7 @@ export function useBookSession() {
     },
 
     onError: (error: Error) => {
+      if (error.message === PAYMENT_CANCELED) return;
       Alert.alert('Booking failed', error.message);
     },
   });
@@ -193,7 +194,7 @@ export function useClaimWaitlistSpot() {
         } catch (cleanupError) {
           console.error('Failed to roll back claim:', cleanupError);
         }
-        throw new Error(result.error ?? 'Payment cancelled.');
+        throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
       }
 
       return data;
@@ -203,9 +204,8 @@ export function useClaimWaitlistSpot() {
       queryClient.invalidateQueries({ queryKey: ['membership'] });
     },
     onError: (error: Error) => {
-      if (!error.message.includes('Payment cancelled')) {
-        Alert.alert('Claim failed', error.message);
-      }
+      if (error.message === PAYMENT_CANCELED) return;
+      Alert.alert('Claim failed', error.message);
     },
   });
 }

@@ -55,10 +55,16 @@ export async function initializePaymentSheet(params: PaymentSheetParams): Promis
   }
 }
 
-export async function openPaymentSheet(): Promise<{ success: boolean; error?: string }> {
+export const PAYMENT_CANCELED = '__payment_canceled__';
+
+export async function openPaymentSheet(): Promise<{ success: boolean; canceled?: boolean; error?: string }> {
   const { error } = await presentPaymentSheet();
   if (error) {
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      canceled: error.code === 'Canceled',
+      error: error.message,
+    };
   }
   return { success: true };
 }

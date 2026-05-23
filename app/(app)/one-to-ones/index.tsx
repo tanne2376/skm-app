@@ -22,14 +22,16 @@ export default function OneToOnesScreen() {
   const { data: block } = useActiveBlock();
   const queryClient = useQueryClient();
   const canCreate = role === 'teacher' || role === 'admin';
+  const isAdmin = role === 'admin';
   const userId = session?.user.id;
 
   const [activeTab, setActiveTab] = useState<Tab>('available');
+  const effectiveTab: Tab = isAdmin ? 'my-sessions' : activeTab;
 
   // Available: sessions from others that are still available (RLS already filters out own)
   const { data: available, isLoading: loadingAvailable, refetch: refetchAvailable } = useQuery<OneToOneWithDetails[]>({
     queryKey: ['one_to_ones', 'available', userId],
-    enabled: !!session,
+    enabled: !!session && !isAdmin,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('one_to_ones')
@@ -87,9 +89,9 @@ export default function OneToOnesScreen() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
-  const isLoading = activeTab === 'available' ? loadingAvailable : loadingMy;
-  const items = activeTab === 'available' ? available : mySessions;
-  const refetch = activeTab === 'available' ? refetchAvailable : refetchMy;
+  const isLoading = effectiveTab === 'available' ? loadingAvailable : loadingMy;
+  const items = effectiveTab === 'available' ? available : mySessions;
+  const refetch = effectiveTab === 'available' ? refetchAvailable : refetchMy;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'available', label: 'Available' },
@@ -100,17 +102,19 @@ export default function OneToOnesScreen() {
     <View style={styles.container}>
       <ScreenHeader title="1-to-1 Sessions" />
 
-      <View style={styles.tabs}>
-        {tabs.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, activeTab === t.key && styles.tabActive]}
-            onPress={() => setActiveTab(t.key)}
-          >
-            <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {!isAdmin && (
+        <View style={styles.tabs}>
+          {tabs.map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tab, activeTab === t.key && styles.tabActive]}
+              onPress={() => setActiveTab(t.key)}
+            >
+              <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <FlatList
         data={items ?? []}
@@ -119,7 +123,7 @@ export default function OneToOnesScreen() {
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.accent} colors={[COLORS.accent]} />}
         ListHeaderComponent={
           <View>
-            {block?.is_usable && activeTab === 'available' && (
+            {block?.is_usable && effectiveTab === 'available' && (
               <View style={styles.blockBanner}>
                 <Text style={styles.blockBannerTitle}>
                   Block: {block.sessions_remaining} session{block.sessions_remaining === 1 ? '' : 's'} remaining
@@ -131,7 +135,7 @@ export default function OneToOnesScreen() {
                 </Text>
               </View>
             )}
-            {canCreate && activeTab === 'my-sessions' && (
+            {canCreate && effectiveTab === 'my-sessions' && (
               <Button
                 variant="secondary"
                 size="md"
@@ -158,7 +162,7 @@ export default function OneToOnesScreen() {
             <OneToOneCard
               oto={item}
               onPress={() => router.push(`/(app)/one-to-ones/${item.id}`)}
-              isMySessionsTab={activeTab === 'my-sessions'}
+              isMySessionsTab={effectiveTab === 'my-sessions'}
               isCreator={isCreator}
               isStudentBooking={isStudentBooking}
               showCashConfirm={showCashConfirm}

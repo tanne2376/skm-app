@@ -10,19 +10,17 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useAuth } from '@/hooks/useAuth';
-import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useActiveBlock } from '@/hooks/useActiveBlock';
 import { useBookOneToOneWithBlock } from '@/hooks/useBlockPurchase';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet, formatGBP } from '@/lib/stripe';
+import { initializePaymentSheet, openPaymentSheet, formatGBP, PAYMENT_CANCELED } from '@/lib/stripe';
 import { OneToOneWithDetails, PaymentMethod } from '@/types';
 
 
 export default function OneToOneDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { session, role } = useAuth();
-  const { data: membership } = useActiveMembership();
+  const { session } = useAuth();
   const { data: block } = useActiveBlock();
   const bookWithBlock = useBookOneToOneWithBlock();
   const queryClient = useQueryClient();
@@ -78,7 +76,7 @@ export default function OneToOneDetailScreen() {
           } catch (cleanupError) {
             console.error('Failed to cleanup after payment failure:', cleanupError);
           }
-          throw new Error(result.error ?? 'Payment cancelled.');
+          throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
         }
       }
     },
@@ -88,9 +86,8 @@ export default function OneToOneDetailScreen() {
     },
     onError: (e: Error) => {
       queryClient.invalidateQueries({ queryKey: ['one_to_ones'] });
-      if (!e.message.includes('Payment cancelled')) {
-        Alert.alert('Booking failed', e.message);
-      }
+      if (e.message === PAYMENT_CANCELED) return;
+      Alert.alert('Booking failed', e.message);
     },
   });
 
@@ -294,7 +291,6 @@ export default function OneToOneDetailScreen() {
             <Text style={styles.paymentTitle}>Select payment method</Text>
             <PaymentMethodSelector
               price={oto.price}
-              membership={membership}
               onSelect={(method) => bookMutation.mutate(method)}
               isLoading={bookMutation.isPending}
             />

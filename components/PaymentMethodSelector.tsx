@@ -5,7 +5,7 @@ import { formatGBP } from '@/lib/stripe';
 
 interface PaymentMethodSelectorProps {
   price: number;
-  membership: MembershipWithUsage | null | undefined;
+  membership?: MembershipWithUsage | null;
   onSelect: (method: PaymentMethod) => void;
   isLoading?: boolean;
 }
