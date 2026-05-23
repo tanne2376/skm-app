@@ -16,6 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: 'com.switchkickmafia.app',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription: 'Used to scan your payment card when adding it to checkout.',
     },
   },
   android: {
