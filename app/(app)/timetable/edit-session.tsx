@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, Alert, TouchableOpacity, FlatList, Modal, Platform,
+  View, Text, TextInput, StyleSheet, ScrollView, Alert, TouchableOpacity, FlatList, Modal, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -193,6 +193,7 @@ export default function EditSessionScreen() {
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title={sessionId ? 'Edit Session' : 'Override Session'} showBack />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {template && (
@@ -292,6 +293,7 @@ export default function EditSessionScreen() {
           Save Session Override
         </Button>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Teacher picker */}
       <Modal visible={showTeacherPicker} animationType="slide" transparent onRequestClose={() => setShowTeacherPicker(false)}>

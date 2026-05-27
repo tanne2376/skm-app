@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, StyleSheet, ScrollView, Alert,
-  TouchableOpacity, Platform, FlatList,
+  TouchableOpacity, Platform, FlatList, KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
@@ -51,7 +51,6 @@ export default function CreateOneToOneScreen() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!title.trim()) throw new Error('Title is required.');
       const priceNum = parseFloat(pricePounds);
       if (isNaN(priceNum) || priceNum < 0) throw new Error('Enter a valid price.');
       if (!selectedLocation && !customLocation.trim()) throw new Error('Enter a location.');
@@ -64,15 +63,18 @@ export default function CreateOneToOneScreen() {
       const startHH = String(startTime.getHours()).padStart(2, '0');
       const startMM = String(startTime.getMinutes()).padStart(2, '0');
       const startTimeStr = `${startHH}:${startMM}`;
+      const endDate = new Date(startTime);
+      endDate.setHours(endDate.getHours() + 1);
+      const endTimeStr = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
 
       const { data: inserted, error } = await supabase.from('one_to_ones').insert({
         creator_id: session!.user.id,
         teacher_id: session!.user.id,
-        title: title.trim(),
+        title: title.trim() || 'One to one',
         price: Math.round(priceNum * 100),
         session_date: sessionDateStr,
         start_time: startTimeStr,
-        end_time: startTimeStr,
+        end_time: endTimeStr,
         location_type: selectedLocation ? 'predefined' : 'custom',
         location_id: selectedLocation?.id ?? null,
         location_text: selectedLocation
@@ -98,6 +100,7 @@ export default function CreateOneToOneScreen() {
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title="Create 1-to-1" showBack />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* Title */}
@@ -202,6 +205,7 @@ export default function CreateOneToOneScreen() {
           Create Session
         </Button>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* iOS date picker sheet */}
       <SlideUpModal visible={showDateSheet} onDismiss={() => setShowDateSheet(false)} maxHeight="45%">
