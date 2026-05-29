@@ -66,7 +66,8 @@ export default function HomeScreen() {
 
   // Can the user book for free with their membership?
   const canUseMembership = (() => {
-    if (!membership || membership.status !== 'active') return false;
+    if (!membership) return false;
+    if (membership.status !== 'active' && membership.status !== 'cancelling') return false;
     if (membership.tier === 'unlimited') return true;
     return membership.weekly_usage_count < 2;
   })();
