@@ -1,18 +1,25 @@
--- Cash membership UX:
---   * Roster RPC surfaces the underlying membership's cash status so
---     teachers can collect £80/£100 follow-ups directly from the class
---     roster (mirrors the existing cash-block UX on 1-to-1s).
---   * Monthly renewal job rolls cash memberships forward at month
---     boundary and resets payment_status to 'pending'. Without this,
---     cash memberships go stale at period end and the student can no
---     longer use them.
-
--- pg_cron must be enabled on the project. On Supabase: Dashboard →
--- Database → Extensions → pg_cron. Statement is a no-op if already on.
-create extension if not exists pg_cron;
+-- Security hardening for migration 028 (from code review).
+--
+-- 028 edited two objects in place. Because migrations are only applied
+-- once per recorded version, databases that already ran 028 would NOT
+-- pick up those edits via `supabase db push`. This migration re-applies
+-- them as idempotent statements so every environment converges:
+--
+--   1. get_class_roster() — add a teacher session-ownership check. The
+--      function is SECURITY DEFINER (RLS is bypassed inside it), so any
+--      teacher could previously fetch ANY session's roster by passing an
+--      arbitrary p_session_id. Restrict non-admin teachers to sessions
+--      they teach (class_sessions.teacher_id = auth.uid()), matching the
+--      RLS convention in 002_rls.sql. Admins are unchanged.
+--
+--   2. roll_expired_cash_memberships() — revoke EXECUTE from client roles.
+--      Postgres grants EXECUTE to PUBLIC by default; this SECURITY DEFINER
+--      renewal job should only ever run from the pg_cron schedule.
+--
+-- All statements are create-or-replace / revoke, safe to run repeatedly.
 
 -- =========================================================
--- 1. Roster RPC — enriched with payment context
+-- 1. Roster RPC — teacher ownership guard added
 -- =========================================================
 create or replace function get_class_roster(p_session_id uuid)
 returns table (
@@ -102,65 +109,8 @@ $$;
 grant execute on function get_class_roster(uuid) to authenticated;
 
 -- =========================================================
--- 2. Monthly renewal — roll cash memberships forward, mark
---    cancelling ones as fully cancelled at period end.
+-- 2. Lock down the SECURITY DEFINER renewal job
 -- =========================================================
-create or replace function roll_expired_cash_memberships()
-returns table (
-  renewed integer,
-  cancelled integer
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_renewed integer;
-  v_cancelled integer;
-begin
-  update memberships
-  set
-    current_period_start = date_trunc('month', now()),
-    current_period_end   = date_trunc('month', now()) + interval '1 month',
-    payment_status       = 'pending'
-  where payment_method = 'cash'
-    and status = 'active'
-    and current_period_end <= now();
-  get diagnostics v_renewed = row_count;
-
-  update memberships
-  set status = 'cancelled'
-  where payment_method = 'cash'
-    and status = 'cancelling'
-    and current_period_end <= now();
-  get diagnostics v_cancelled = row_count;
-
-  return query select v_renewed, v_cancelled;
-end;
-$$;
-
--- Lock down the SECURITY DEFINER renewal job: Postgres grants EXECUTE to
--- PUBLIC by default. Only the pg_cron job (running as a privileged role)
--- should ever invoke this, so strip EXECUTE from client-facing roles.
 revoke execute on function roll_expired_cash_memberships() from public;
 revoke execute on function roll_expired_cash_memberships() from anon;
 revoke execute on function roll_expired_cash_memberships() from authenticated;
-
--- =========================================================
--- 3. Schedule the monthly job — 00:01 on day 1 of each month
--- =========================================================
--- pg_cron uses UTC. Memberships are anchored to date_trunc('month', now())
--- which evaluates in the cron job's UTC context, matching the create flow.
--- We use a guard insert/update to make the schedule idempotent.
-do $$
-begin
-  if exists (select 1 from cron.job where jobname = 'roll-cash-memberships') then
-    perform cron.unschedule('roll-cash-memberships');
-  end if;
-  perform cron.schedule(
-    'roll-cash-memberships',
-    '1 0 1 * *',
-    'select roll_expired_cash_memberships();'
-  );
-end;
-$$;
