@@ -51,9 +51,8 @@ Deno.serve(async (req) => {
     ? Deno.env.get('STRIPE_PRICE_UNLIMITED')!
     : Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK')!;
 
-  const amount = tier === 'unlimited' ? 10000 : 8000; // pence
-
   // Clean up any pending invoice items left from previous failed attempts
+  // (e.g. earlier versions of this function added a redundant one-time item).
   const pendingItems = await stripe.invoiceItems.list({
     customer: customerId,
     pending: true,
@@ -62,19 +61,12 @@ Deno.serve(async (req) => {
     await stripe.invoiceItems.del(item.id);
   }
 
-  // Add a one-time invoice item so the first invoice charges the full monthly
-  // amount immediately (the subscription itself won't prorate because we set
-  // proration_behavior to 'none').
-  await stripe.invoiceItems.create({
-    customer: customerId,
-    amount,
-    currency: 'gbp',
-    description: `SKM ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'} — first month`,
-  });
-
   // Create subscription with billing anchored to the 1st of every month.
-  // proration_behavior 'none' means no prorated charge for the partial first
-  // period — the one-time invoice item above covers it instead.
+  // proration_behavior 'none' + billing_cycle_anchor_config makes Stripe
+  // charge the full monthly amount immediately for the partial first period
+  // (no prorating down). That single invoice covers the first month —
+  // do NOT add a separate one-time invoice item or the customer is billed
+  // twice.
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: priceId }],
