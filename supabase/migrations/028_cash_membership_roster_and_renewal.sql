@@ -73,10 +73,10 @@ begin
   join profiles p on p.id = b.student_id
   left join lateral (
     select *
-    from memberships
-    where student_id = b.student_id
-      and status in ('active', 'cancelling')
-    order by created_at desc
+    from memberships mi
+    where mi.student_id = b.student_id
+      and mi.status in ('active', 'cancelling')
+    order by mi.created_at desc
     limit 1
   ) m on b.payment_method = 'membership'
   where b.session_id = p_session_id
