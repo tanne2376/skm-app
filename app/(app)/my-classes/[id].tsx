@@ -67,6 +67,19 @@ export default function MyClassRosterScreen() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
+  const confirmMembershipCashMutation = useMutation({
+    mutationFn: async (membershipId: string) => {
+      const { error } = await supabase.rpc('confirm_cash_membership', { p_membership_id: membershipId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roster', id] });
+      queryClient.invalidateQueries({ queryKey: ['unconfirmed_cash_sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
   const isLoading = loadingSession || loadingBookings;
 
   if (isLoading) {
@@ -148,6 +161,25 @@ export default function MyClassRosterScreen() {
                       )
                     }
                     loading={confirmCashMutation.isPending}
+                  >
+                    Confirm Cash
+                  </Button>
+                )}
+                {isMembershipCashPending && item.membership_id && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onPress={() =>
+                      Alert.alert(
+                        'Confirm Membership Cash',
+                        `Mark ${item.student_name}'s membership as paid in cash? This covers the whole month, not just this class.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Confirm Month Paid', onPress: () => confirmMembershipCashMutation.mutate(item.membership_id!) },
+                        ],
+                      )
+                    }
+                    loading={confirmMembershipCashMutation.isPending}
                   >
                     Confirm Cash
                   </Button>
