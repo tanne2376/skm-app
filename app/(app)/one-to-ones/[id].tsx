@@ -10,19 +10,17 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useAuth } from '@/hooks/useAuth';
-import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useActiveBlock } from '@/hooks/useActiveBlock';
 import { useBookOneToOneWithBlock } from '@/hooks/useBlockPurchase';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet, formatGBP } from '@/lib/stripe';
+import { initializePaymentSheet, openPaymentSheet, formatGBP, PAYMENT_CANCELED } from '@/lib/stripe';
 import { OneToOneWithDetails, PaymentMethod } from '@/types';
 
 
 export default function OneToOneDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { session, role } = useAuth();
-  const { data: membership } = useActiveMembership();
+  const { session } = useAuth();
   const { data: block } = useActiveBlock();
   const bookWithBlock = useBookOneToOneWithBlock();
   const queryClient = useQueryClient();
@@ -78,7 +76,7 @@ export default function OneToOneDetailScreen() {
           } catch (cleanupError) {
             console.error('Failed to cleanup after payment failure:', cleanupError);
           }
-          throw new Error(result.error ?? 'Payment cancelled.');
+          throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
         }
       }
     },
@@ -88,9 +86,8 @@ export default function OneToOneDetailScreen() {
     },
     onError: (e: Error) => {
       queryClient.invalidateQueries({ queryKey: ['one_to_ones'] });
-      if (!e.message.includes('Payment cancelled')) {
-        Alert.alert('Booking failed', e.message);
-      }
+      if (e.message === PAYMENT_CANCELED) return;
+      Alert.alert('Booking failed', e.message);
     },
   });
 
@@ -126,6 +123,18 @@ export default function OneToOneDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['one_to_ones'] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  const confirmBlockCashMutation = useMutation({
+    mutationFn: async (blockId: string) => {
+      const { error } = await supabase.rpc('confirm_cash_block_payment', { p_block_id: blockId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['one_to_ones'] });
+      queryClient.invalidateQueries({ queryKey: ['unconfirmed_cash_sessions'] });
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
@@ -168,6 +177,18 @@ export default function OneToOneDetailScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Confirm', onPress: () => confirmCashMutation.mutate() },
+      ],
+    );
+  }
+
+  function confirmBlockCash() {
+    if (!oto?.block?.id) return;
+    Alert.alert(
+      'Confirm Block Cash Payment',
+      'This confirms cash payment for the entire block, not just this session. Use Manage → Users if you need partial-amount handling.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm Block Paid', onPress: () => confirmBlockCashMutation.mutate(oto.block!.id) },
       ],
     );
   }
@@ -294,7 +315,6 @@ export default function OneToOneDetailScreen() {
             <Text style={styles.paymentTitle}>Select payment method</Text>
             <PaymentMethodSelector
               price={oto.price}
-              membership={membership}
               onSelect={(method) => bookMutation.mutate(method)}
               isLoading={bookMutation.isPending}
             />
@@ -321,12 +341,19 @@ export default function OneToOneDetailScreen() {
           </Button>
         )}
 
-        {/* Block-cash-pending — creator info (confirmation happens at the block level) */}
+        {/* Block-cash-pending — creator can confirm the whole block as paid */}
         {isBlockCashPending && isCreator && (
-          <View style={styles.blockCashPendingBanner}>
-            <Text style={styles.blockCashPendingText}>
-              This 1-to-1 is paid with a block whose cash payment is still pending.
-              Cash confirmation happens on the block itself in Manage → Users.
+          <View style={styles.cancelSection}>
+            <Button
+              variant="primary"
+              size="lg"
+              onPress={confirmBlockCash}
+              loading={confirmBlockCashMutation.isPending}
+            >
+              Confirm Block Cash Payment
+            </Button>
+            <Text style={styles.blockCashPendingHint}>
+              Confirms the whole block as paid. For partial amounts use Manage → Users.
             </Text>
           </View>
         )}
@@ -409,9 +436,5 @@ const styles = StyleSheet.create({
   awaitingText: { color: COLORS.grey[300], fontSize: 15, fontWeight: '600', textAlign: 'center' },
   awaitingSub: { color: COLORS.grey[600], fontSize: 13, textAlign: 'center', marginTop: 4, lineHeight: 18 },
 
-  blockCashPendingBanner: {
-    backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 8, padding: 12,
-    borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)',
-  },
-  blockCashPendingText: { color: COLORS.warning, fontSize: 13, lineHeight: 18 },
+  blockCashPendingHint: { color: COLORS.grey[600], fontSize: 13, textAlign: 'center', lineHeight: 18 },
 });

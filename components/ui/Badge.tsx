@@ -28,8 +28,19 @@ export function BookingStatusBadge({ status }: { status: BookingStatus }) {
   return <Badge label={label} variant={variant} />;
 }
 
-export function PaymentStatusBadge({ status, method }: { status: PaymentStatus; method?: string }) {
-  if (method === 'membership') return <Badge label="Membership" variant="info" />;
+export function PaymentStatusBadge({
+  status,
+  method,
+  membershipCashPending = false,
+}: {
+  status: PaymentStatus;
+  method?: string;
+  membershipCashPending?: boolean;
+}) {
+  if (method === 'membership') {
+    if (membershipCashPending) return <Badge label="Membership — Cash Awaiting" variant="warning" />;
+    return <Badge label="Membership" variant="info" />;
+  }
   if (method === 'cash') {
     if (status === 'paid') return <Badge label="Cash ✓" variant="success" />;
     return <Badge label="Cash — Awaiting" variant="warning" />;

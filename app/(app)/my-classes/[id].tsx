@@ -8,7 +8,22 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PaymentStatusBadge } from '@/components/ui/Badge';
 import { supabase } from '@/lib/supabase';
-import { BookingWithStudent } from '@/types';
+import { formatGBP } from '@/lib/stripe';
+
+interface RosterRow {
+  booking_id: string;
+  student_id: string;
+  student_name: string;
+  booked_at: string;
+  payment_method: string;
+  payment_status: 'pending' | 'paid' | 'refunded' | 'no_refund';
+  membership_id: string | null;
+  membership_tier: string | null;
+  membership_payment_method: string | null;
+  membership_payment_status: string | null;
+  follow_up_amount_pence: number | null;
+  cash_pending: boolean;
+}
 
 export default function MyClassRosterScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,17 +43,12 @@ export default function MyClassRosterScreen() {
     },
   });
 
-  const { data: bookings, isLoading: loadingBookings, refetch } = useQuery<BookingWithStudent[]>({
+  const { data: bookings, isLoading: loadingBookings, refetch } = useQuery<RosterRow[]>({
     queryKey: ['roster', id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*, profiles(id, full_name)')
-        .eq('session_id', id)
-        .eq('status', 'confirmed')
-        .order('booked_at', { ascending: true });
+      const { data, error } = await supabase.rpc('get_class_roster', { p_session_id: id });
       if (error) throw error;
-      return (data ?? []) as BookingWithStudent[];
+      return (data ?? []) as RosterRow[];
     },
   });
 
@@ -53,6 +63,19 @@ export default function MyClassRosterScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roster', id] });
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  const confirmMembershipCashMutation = useMutation({
+    mutationFn: async (membershipId: string) => {
+      const { error } = await supabase.rpc('confirm_cash_membership', { p_membership_id: membershipId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roster', id] });
+      queryClient.invalidateQueries({ queryKey: ['unconfirmed_cash_sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
@@ -86,43 +109,85 @@ export default function MyClassRosterScreen() {
 
       <FlatList
         data={[...(bookings ?? [])].sort((a, b) => {
-          const aPending = a.payment_method === 'cash' && a.payment_status === 'pending' ? 0 : 1;
-          const bPending = b.payment_method === 'cash' && b.payment_status === 'pending' ? 0 : 1;
+          const aPending = a.cash_pending ? 0 : 1;
+          const bPending = b.cash_pending ? 0 : 1;
           return aPending - bPending;
         })}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.booking_id}
         contentContainerStyle={styles.list}
         onRefresh={refetch}
         refreshing={loadingBookings}
-        renderItem={({ item }) => (
-          <Card style={styles.studentCard}>
-            <View style={styles.studentRow}>
-              <View style={styles.flex}>
-                <Text style={styles.studentName}>{item.profiles?.full_name}</Text>
-                <PaymentStatusBadge status={item.payment_status} method={item.payment_method} />
+        renderItem={({ item }) => {
+          const isMembershipCashPending =
+            item.payment_method === 'membership'
+            && item.membership_payment_method === 'cash'
+            && item.membership_payment_status === 'pending';
+          const isBookingCashPending =
+            item.payment_method === 'cash' && item.payment_status === 'pending';
+
+          return (
+            <Card style={styles.studentCard}>
+              <View style={styles.studentRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.studentName}>{item.student_name}</Text>
+                  <View style={styles.badgeRow}>
+                    <PaymentStatusBadge
+                      status={item.payment_status}
+                      method={item.payment_method}
+                      membershipCashPending={isMembershipCashPending}
+                    />
+                    {item.cash_pending && item.follow_up_amount_pence !== null && (
+                      <Text style={styles.followUpAmount}>{formatGBP(item.follow_up_amount_pence)}</Text>
+                    )}
+                  </View>
+                  {isMembershipCashPending && (
+                    <Text style={styles.followUpHint}>
+                      Collect via Manage → Users (covers the whole month, not just this class).
+                    </Text>
+                  )}
+                </View>
+                {isBookingCashPending && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onPress={() =>
+                      Alert.alert(
+                        'Confirm Cash Payment',
+                        `Mark ${item.student_name} as paid in cash?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Confirm', onPress: () => confirmCashMutation.mutate(item.booking_id) },
+                        ],
+                      )
+                    }
+                    loading={confirmCashMutation.isPending}
+                  >
+                    Confirm Cash
+                  </Button>
+                )}
+                {isMembershipCashPending && item.membership_id && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onPress={() =>
+                      Alert.alert(
+                        'Confirm Membership Cash',
+                        `Mark ${item.student_name}'s membership as paid in cash? This covers the whole month, not just this class.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Confirm Month Paid', onPress: () => confirmMembershipCashMutation.mutate(item.membership_id!) },
+                        ],
+                      )
+                    }
+                    loading={confirmMembershipCashMutation.isPending}
+                  >
+                    Confirm Cash
+                  </Button>
+                )}
               </View>
-              {item.payment_method === 'cash' && item.payment_status === 'pending' && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onPress={() =>
-                    Alert.alert(
-                      'Confirm Cash Payment',
-                      `Mark ${item.profiles?.full_name} as paid in cash?`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Confirm', onPress: () => confirmCashMutation.mutate(item.id) },
-                      ],
-                    )
-                  }
-                  loading={confirmCashMutation.isPending}
-                >
-                  Confirm Cash
-                </Button>
-              )}
-            </View>
-          </Card>
-        )}
+            </Card>
+          );
+        }}
         ListEmptyComponent={
           <Text style={styles.emptyText}>No bookings yet for this class.</Text>
         }
@@ -144,5 +209,8 @@ const styles = StyleSheet.create({
   studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flex: { flex: 1, gap: 6 },
   studentName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  followUpAmount: { color: COLORS.warning, fontSize: 13, fontWeight: '700' },
+  followUpHint: { color: COLORS.grey[600], fontSize: 11, lineHeight: 15 },
   emptyText: { color: COLORS.grey[600], textAlign: 'center', paddingTop: 40, fontSize: 15 },
 });

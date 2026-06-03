@@ -26,13 +26,14 @@ Deno.serve(async (req) => {
     return errorResponse('You are blocked from booking classes this month due to 3 or more late cancellations.', 403);
   }
 
-  // Verify membership belongs to this user and is active
+  // Verify membership belongs to this user and is usable
+  // (cancelling memberships remain entitled to classes until period end)
   const { data: membership } = await adminClient
     .from('memberships')
     .select('*')
     .eq('id', membership_id)
     .eq('student_id', user.id)
-    .eq('status', 'active')
+    .in('status', ['active', 'cancelling'])
     .single();
 
   if (!membership) return errorResponse('Membership not found or inactive', 403);

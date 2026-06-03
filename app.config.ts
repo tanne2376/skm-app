@@ -4,6 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Switch-Kick Mafia',
   slug: 'switch-kick-mafia',
+  owner: 'bt439',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -13,8 +14,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.switchkickmafia.app',
+    buildNumber: '2',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription: 'Used to scan your payment card when adding it to checkout.',
     },
   },
   android: {
@@ -57,7 +60,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     eas: {
-      projectId: process.env.EAS_PROJECT_ID,
+      projectId: '01cd9e9e-c880-4762-93b1-8fbac1fa0a07',
     },
   },
 });

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { invokeFunction, supabase } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet } from '@/lib/stripe';
+import { initializePaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
 import { useAuth } from './useAuth';
 
 async function waitForActiveBlock(blockId: string, maxAttempts = 8): Promise<void> {
@@ -72,7 +72,7 @@ export function useCreateStripeBlockPurchase() {
         // Server has already created the pending_stripe row; release it so
         // the 15-minute pending guard doesn't block a retry.
         await supabase.rpc('abandon_pending_stripe_block', { p_block_id: data!.block_id });
-        throw new Error(result.error ?? 'Payment cancelled.');
+        throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
       }
 
       // Wait for the webhook to flip the row to active before returning.
@@ -84,7 +84,10 @@ export function useCreateStripeBlockPurchase() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['block'] });
     },
-    onError: (e: Error) => Alert.alert('Block purchase failed', e.message),
+    onError: (e: Error) => {
+      if (e.message === PAYMENT_CANCELED) return;
+      Alert.alert('Block purchase failed', e.message);
+    },
   });
 }
 

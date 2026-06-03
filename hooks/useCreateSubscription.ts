@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { invokeFunction, supabase } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet } from '@/lib/stripe';
+import { initializePaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
 import { MembershipTier } from '@/types';
 import { useAuth } from './useAuth';
 
@@ -41,7 +41,7 @@ export function useCreateSubscription() {
       });
 
       const result = await openPaymentSheet();
-      if (!result.success) throw new Error(result.error ?? 'Payment cancelled.');
+      if (!result.success) throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
 
       // Wait for the Stripe webhook to create the membership row before
       // returning so the UI switches to the active membership view.
@@ -53,6 +53,7 @@ export function useCreateSubscription() {
       queryClient.invalidateQueries({ queryKey: ['membership'] });
     },
     onError: (error: Error) => {
+      if (error.message === PAYMENT_CANCELED) return;
       Alert.alert('Subscription failed', error.message);
     },
   });

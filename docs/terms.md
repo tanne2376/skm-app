@@ -31,17 +31,19 @@ details confidential and for activity that happens under your account.
   full refund. 3 hours or less before, no refund.
 - **1-to-1 sessions** — cancel more than 24 hours before the session
   starts for a full refund. 24 hours or less before, no refund.
-- Memberships can be cancelled at any time from
-  **Settings → Membership** and remain active until the end of the
+- Memberships can be cancelled at any time from the
+  **Membership** tab and remain active until the end of the
   current billing period.
 - 1-to-1 sessions are not included in any membership.
 
 ## 4. Waitlists
 
-If a class is full you can join a waitlist. If a place opens up the
-next person on the waitlist is automatically charged and booked in. By
-joining a waitlist you authorise that automatic charge for the duration
-of your queue position.
+If a class is full you can join a waitlist. Waitlists are first-in,
+first-out. When a place opens up, the person at the top of the queue
+is notified and has **one hour** to confirm payment and claim the
+spot. If you don't confirm within that hour, the next person in the
+queue takes the spot and you drop one place. You can claim again the
+next time a spot opens up while you're at the front of the queue.
 
 ## 5. Acceptable use
 
