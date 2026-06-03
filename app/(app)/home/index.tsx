@@ -29,7 +29,23 @@ import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { useBookingBlocked } from '@/hooks/useLateCancellations';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { ClassSessionWithDetails, PaymentMethod, BookingWithStudent } from '@/types';
+import { ClassSessionWithDetails, PaymentMethod } from '@/types';
+import { formatGBP } from '@/lib/stripe';
+
+interface RosterRow {
+  booking_id: string;
+  student_id: string;
+  student_name: string;
+  booked_at: string;
+  payment_method: string;
+  payment_status: 'pending' | 'paid' | 'refunded' | 'no_refund';
+  membership_id: string | null;
+  membership_tier: string | null;
+  membership_payment_method: string | null;
+  membership_payment_status: string | null;
+  follow_up_amount_pence: number | null;
+  cash_pending: boolean;
+}
 import { PaymentStatusBadge } from '@/components/ui/Badge';
 
 export default function HomeScreen() {
@@ -271,18 +287,13 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   const spotsLeft = session.effective_capacity - session.confirmed_count;
   const isFull = spotsLeft <= 0;
 
-  const { data: rosterBookings, isLoading: rosterLoading } = useQuery<BookingWithStudent[]>({
+  const { data: rosterBookings, isLoading: rosterLoading } = useQuery<RosterRow[]>({
     queryKey: ['roster', session.id],
     enabled: showRoster,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*, profiles(id, full_name)')
-        .eq('session_id', session.id)
-        .eq('status', 'confirmed')
-        .order('booked_at', { ascending: true });
+      const { data, error } = await supabase.rpc('get_class_roster', { p_session_id: session.id });
       if (error) throw error;
-      return (data ?? []) as BookingWithStudent[];
+      return (data ?? []) as RosterRow[];
     },
   });
 
@@ -429,41 +440,64 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           </View>
           <FlatList
             data={[...(rosterBookings ?? [])].sort((a, b) => {
-              const aPending = a.payment_method === 'cash' && a.payment_status === 'pending' ? 0 : 1;
-              const bPending = b.payment_method === 'cash' && b.payment_status === 'pending' ? 0 : 1;
+              const aPending = a.cash_pending ? 0 : 1;
+              const bPending = b.cash_pending ? 0 : 1;
               return aPending - bPending;
             })}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.booking_id}
             contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item }) => (
-              <Card style={styles.rosterCard}>
-                <View style={styles.rosterRow}>
-                  <View style={{ flex: 1, gap: 6 }}>
-                    <Text style={styles.rosterName}>{item.profiles?.full_name}</Text>
-                    <PaymentStatusBadge status={item.payment_status} method={item.payment_method} />
+            renderItem={({ item }) => {
+              const isMembershipCashPending =
+                item.payment_method === 'membership'
+                && item.membership_payment_method === 'cash'
+                && item.membership_payment_status === 'pending';
+              const isBookingCashPending =
+                item.payment_method === 'cash' && item.payment_status === 'pending';
+
+              return (
+                <Card style={styles.rosterCard}>
+                  <View style={styles.rosterRow}>
+                    <View style={{ flex: 1, gap: 6 }}>
+                      <Text style={styles.rosterName}>{item.student_name}</Text>
+                      <View style={styles.rosterBadgeRow}>
+                        <PaymentStatusBadge
+                          status={item.payment_status}
+                          method={item.payment_method}
+                          membershipCashPending={isMembershipCashPending}
+                        />
+                        {item.cash_pending && item.follow_up_amount_pence !== null && (
+                          <Text style={styles.rosterFollowUp}>{formatGBP(item.follow_up_amount_pence)}</Text>
+                        )}
+                      </View>
+                      {isMembershipCashPending && (
+                        <Text style={styles.rosterFollowUpHint}>
+                          Collect via Manage → Users (covers the whole month).
+                        </Text>
+                      )}
+                    </View>
+                    {isBookingCashPending && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onPress={() =>
+                          Alert.alert(
+                            'Confirm Cash Payment',
+                            `Mark ${item.student_name} as paid in cash?`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Confirm', onPress: () => confirmCashMutation.mutate(item.booking_id) },
+                            ],
+                          )
+                        }
+                        loading={confirmCashMutation.isPending}
+                      >
+                        Confirm Cash
+                      </Button>
+                    )}
                   </View>
-                  {item.payment_method === 'cash' && item.payment_status === 'pending' && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onPress={() =>
-                        Alert.alert(
-                          'Confirm Cash Payment',
-                          `Mark ${item.profiles?.full_name} as paid in cash?`,
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Confirm', onPress: () => confirmCashMutation.mutate(item.id) },
-                          ],
-                        )
-                      }
-                      loading={confirmCashMutation.isPending}
-                    >
-                      Confirm Cash
-                    </Button>
-                  )}
-                </View>
-              </Card>
-            )}
+                </Card>
+              );
+            }}
             ListEmptyComponent={
               rosterLoading ? null : (
                 <Text style={styles.rosterEmpty}>No bookings yet for this class.</Text>
@@ -594,6 +628,9 @@ const styles = StyleSheet.create({
   rosterCard: { padding: 12 },
   rosterRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   rosterName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  rosterBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  rosterFollowUp: { color: COLORS.warning, fontSize: 13, fontWeight: '700' },
+  rosterFollowUpHint: { color: COLORS.grey[600], fontSize: 11, lineHeight: 15 },
   rosterEmpty: { color: COLORS.grey[600], textAlign: 'center', paddingTop: 40, fontSize: 15 },
 
   timeSheet: {
