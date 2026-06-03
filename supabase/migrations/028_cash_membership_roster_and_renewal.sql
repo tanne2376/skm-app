@@ -125,6 +125,13 @@ begin
 end;
 $$;
 
+-- Lock down the SECURITY DEFINER renewal job: Postgres grants EXECUTE to
+-- PUBLIC by default. Only the pg_cron job (running as a privileged role)
+-- should ever invoke this, so strip EXECUTE from client-facing roles.
+revoke execute on function roll_expired_cash_memberships() from public;
+revoke execute on function roll_expired_cash_memberships() from anon;
+revoke execute on function roll_expired_cash_memberships() from authenticated;
+
 -- =========================================================
 -- 3. Schedule the monthly job — 00:01 on day 1 of each month
 -- =========================================================
