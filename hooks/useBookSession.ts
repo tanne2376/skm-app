@@ -104,7 +104,12 @@ export function useBookSession() {
   });
 }
 
-export async function joinWaitlist(sessionId: string, paymentMethod: PaymentMethod): Promise<number> {
+// Subset of PaymentMethod that maps to the DB's payment_method_type
+// enum. 'block' is excluded — it's a 1-to-1 payment type and the
+// classes waitlist doesn't accept it.
+type ClassPaymentMethod = Extract<PaymentMethod, 'app' | 'cash' | 'membership'>;
+
+export async function joinWaitlist(sessionId: string, paymentMethod: ClassPaymentMethod): Promise<number> {
   // Server-side RPC so the position read bypasses RLS (students can't
   // see each other's bookings) and concurrent joiners serialize on a
   // per-session advisory lock. Returns the assigned waitlist position.
@@ -120,7 +125,11 @@ export async function joinWaitlist(sessionId: string, paymentMethod: PaymentMeth
     throw new Error(error.message || 'Failed to join waitlist.');
   }
 
-  return data as number;
+  if (typeof data !== 'number' || !Number.isFinite(data)) {
+    throw new Error('Invalid waitlist position returned from server.');
+  }
+
+  return data;
 }
 
 export function useJoinWaitlist() {

@@ -119,6 +119,14 @@ describe('joinWaitlist (client → server RPC)', () => {
     );
   });
 
+  it('rejects when the server returns a non-numeric position (defensive boundary check)', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(joinWaitlist('session-uuid-1', 'app')).rejects.toThrow(
+      'Invalid waitlist position returned from server.',
+    );
+  });
+
   it('falls back to a generic message when the server returns no message', async () => {
     mockRpc.mockResolvedValueOnce({
       data: null,
