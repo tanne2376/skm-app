@@ -24,7 +24,10 @@ export function useBookSession() {
       const sessionDateTime = new Date(`${session.session_date}T${session.start_time}`);
 
       if (paymentMethod === 'cash') {
-        // Insert booking directly — teacher confirms cash later
+        // Insert booking directly — teacher confirms cash later.
+        // The home screen only routes to this branch when the class
+        // has spots left; full-class taps go through useJoinWaitlist
+        // instead, so any insert error here is a real failure.
         const { error } = await supabase.from('bookings').insert({
           session_id: session.id,
           student_id: authSession.user.id,
@@ -34,15 +37,13 @@ export function useBookSession() {
         });
         if (error) {
           if (error.code === '23505') throw new Error('You already have a booking for this class.');
-          // If class is full, try to join waitlist
-          await joinWaitlist(session.id, authSession.user.id, 'cash');
-        } else {
-          // Notify teacher/admins of the cash booking (best effort)
-          try {
-            await invokeFunction('notify-event', { event: 'class_booked_cash', sessionId: session.id });
-          } catch (notifyError) {
-            console.warn('Failed to dispatch class_booked_cash', notifyError);
-          }
+          throw new Error(error.message ?? 'Failed to book class.');
+        }
+        // Notify teacher/admins of the cash booking (best effort)
+        try {
+          await invokeFunction('notify-event', { event: 'class_booked_cash', sessionId: session.id });
+        } catch (notifyError) {
+          console.warn('Failed to dispatch class_booked_cash', notifyError);
         }
 
       } else if (paymentMethod === 'membership') {
@@ -103,32 +104,32 @@ export function useBookSession() {
   });
 }
 
-async function joinWaitlist(sessionId: string, studentId: string, paymentMethod: PaymentMethod) {
-  // Get current max waitlist position
-  const { data: existing } = await supabase
-    .from('bookings')
-    .select('waitlist_position')
-    .eq('session_id', sessionId)
-    .eq('status', 'waitlisted')
-    .order('waitlist_position', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+// Subset of PaymentMethod that maps to the DB's payment_method_type
+// enum. 'block' is excluded — it's a 1-to-1 payment type and the
+// classes waitlist doesn't accept it.
+type ClassPaymentMethod = Extract<PaymentMethod, 'app' | 'cash' | 'membership'>;
 
-  const nextPosition = (existing?.waitlist_position ?? 0) + 1;
-
-  const { error } = await supabase.from('bookings').insert({
-    session_id: sessionId,
-    student_id: studentId,
-    status: 'waitlisted',
-    payment_method: paymentMethod,
-    payment_status: 'pending',
-    waitlist_position: nextPosition,
+export async function joinWaitlist(sessionId: string, paymentMethod: ClassPaymentMethod): Promise<number> {
+  // Server-side RPC so the position read bypasses RLS (students can't
+  // see each other's bookings) and concurrent joiners serialize on a
+  // per-session advisory lock. Returns the assigned waitlist position.
+  const { data, error } = await supabase.rpc('join_session_waitlist', {
+    p_session_id: sessionId,
+    p_payment_method: paymentMethod,
   });
 
   if (error) {
-    if (error.code === '23505') throw new Error('You already have a booking for this class.');
-    throw new Error('Failed to join waitlist.');
+    if (error.code === '23505' || /already have a booking/i.test(error.message)) {
+      throw new Error('You already have a booking for this class.');
+    }
+    throw new Error(error.message || 'Failed to join waitlist.');
   }
+
+  if (typeof data !== 'number' || !Number.isFinite(data)) {
+    throw new Error('Invalid waitlist position returned from server.');
+  }
+
+  return data;
 }
 
 export function useJoinWaitlist() {
@@ -138,7 +139,7 @@ export function useJoinWaitlist() {
   return useMutation({
     mutationFn: async (sessionId: string) => {
       if (!authSession) throw new Error('Not authenticated');
-      await joinWaitlist(sessionId, authSession.user.id, 'app');
+      return joinWaitlist(sessionId, 'app');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
