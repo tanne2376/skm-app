@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Tabs, Redirect, useRouter, useSegments } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,13 +16,12 @@ export default function AppLayout() {
   }, [session]);
 
   if (isLoading) return null;
-  if (!session) return <Redirect href="/(auth)/login" />;
 
   const isTeacher = role === 'teacher';
   const isAdmin = role === 'admin';
-  const isTeacherOrAdmin = isTeacher || isAdmin;
 
   // Tab visibility by role:
+  //   guest:    Home | 1-to-1s | Membership | Settings   (mirrors student)
   //   student:  Home | 1-to-1s | Membership | Settings
   //   teacher:  Home | 1-to-1s | My Classes | Membership | Settings
   //   admin:    Home | 1-to-1s | Manage | Settings

@@ -8,8 +8,7 @@ export function useClassSessions(from: Date, to: Date) {
   const { session } = useAuth();
 
   return useQuery<ClassSessionWithDetails[]>({
-    queryKey: ['class_sessions', from.toISOString().split('T')[0], to.toISOString().split('T')[0]],
-    enabled: !!session,
+    queryKey: ['class_sessions', from.toISOString().split('T')[0], to.toISOString().split('T')[0], session?.user.id ?? 'guest'],
     queryFn: async () => {
       const fromDate = from.toISOString().split('T')[0];
       const toDate = to.toISOString().split('T')[0];
@@ -43,13 +42,13 @@ export function useClassSessions(from: Date, to: Date) {
         (stats ?? []).map((s: any) => [s.session_id, s]),
       );
 
-      const userId = session!.user.id;
+      const userId = session?.user.id;
 
       return (data ?? []).map((s: any) => {
         const allBookings = s.bookings ?? [];
-        const userBooking = allBookings.find(
-          (b: any) => b.student_id === userId && b.status !== 'cancelled',
-        );
+        const userBooking = userId
+          ? allBookings.find((b: any) => b.student_id === userId && b.status !== 'cancelled')
+          : undefined;
         const stat = statsMap.get(s.id);
         const effectiveCapacity = s.capacity ?? s.class_templates?.capacity ?? 20;
         const effectivePrice = s.price ?? s.class_templates?.price ?? 1500;

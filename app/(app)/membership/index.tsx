@@ -11,11 +11,13 @@ import { useCreateSubscription, useCreateCashMembership, useCancelSubscription, 
 import { useActiveBlock } from '@/hooks/useActiveBlock';
 import { useBlockTemplates } from '@/hooks/useBlockTemplates';
 import { useCreateCashBlockPurchase, useCreateStripeBlockPurchase, useCancelBlock } from '@/hooks/useBlockPurchase';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { formatGBP } from '@/lib/stripe';
 import { MembershipTier, BlockTemplate, BlockWithDerived } from '@/types';
 
 export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
+  const requireAuth = useRequireAuth();
   const { data: membership, refetch } = useActiveMembership();
   const createSubscription = useCreateSubscription();
   const createCashMembership = useCreateCashMembership();
@@ -31,83 +33,91 @@ export default function MembershipScreen() {
   const [selectingBlock, setSelectingBlock] = useState<{ id: string; method: 'stripe' | 'cash' } | null>(null);
 
   function handleSubscribe(tier: MembershipTier) {
-    Alert.alert(
-      `Subscribe — ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'}`,
-      `${formatGBP(MEMBERSHIP_PRICES_PENCE[tier])} per month, auto-renewing. Cancel anytime.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: () => {
-            setSelecting({ tier, method: 'stripe' });
-            createSubscription.mutate(tier, {
-              onSettled: () => setSelecting(null),
-              onSuccess: () => refetch(),
-            });
+    requireAuth(() => {
+      Alert.alert(
+        `Subscribe — ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'}`,
+        `${formatGBP(MEMBERSHIP_PRICES_PENCE[tier])} per month, auto-renewing. Cancel anytime.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              setSelecting({ tier, method: 'stripe' });
+              createSubscription.mutate(tier, {
+                onSettled: () => setSelecting(null),
+                onSuccess: () => refetch(),
+              });
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    });
   }
 
   function handlePayCash(tier: MembershipTier) {
-    Alert.alert(
-      `Pay with Cash — ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'}`,
-      `Your membership activates immediately. You have 72 hours to pay ${formatGBP(MEMBERSHIP_PRICES_PENCE[tier])} in cash to a class leader, or your membership will be paused until paid. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Activate',
-          onPress: () => {
-            setSelecting({ tier, method: 'cash' });
-            createCashMembership.mutate(tier, {
-              onSettled: () => setSelecting(null),
-              onSuccess: () => refetch(),
-            });
+    requireAuth(() => {
+      Alert.alert(
+        `Pay with Cash — ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'}`,
+        `Your membership activates immediately. You have 72 hours to pay ${formatGBP(MEMBERSHIP_PRICES_PENCE[tier])} in cash to a class leader, or your membership will be paused until paid. Continue?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Activate',
+            onPress: () => {
+              setSelecting({ tier, method: 'cash' });
+              createCashMembership.mutate(tier, {
+                onSettled: () => setSelecting(null),
+                onSuccess: () => refetch(),
+              });
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    });
   }
 
   function handleBuyBlockStripe(t: BlockTemplate) {
-    Alert.alert(
-      `Buy ${t.name}`,
-      `${t.sessions_count} sessions${t.validity_days ? ` valid for ${t.validity_days} days` : ' (never expires)'}. ${formatGBP(t.price_pence)} via card.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Pay',
-          onPress: () => {
-            setSelectingBlock({ id: t.id, method: 'stripe' });
-            createStripeBlock.mutate(t.id, {
-              onSettled: () => setSelectingBlock(null),
-              onSuccess: () => refetchBlock(),
-            });
+    requireAuth(() => {
+      Alert.alert(
+        `Buy ${t.name}`,
+        `${t.sessions_count} sessions${t.validity_days ? ` valid for ${t.validity_days} days` : ' (never expires)'}. ${formatGBP(t.price_pence)} via card.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Pay',
+            onPress: () => {
+              setSelectingBlock({ id: t.id, method: 'stripe' });
+              createStripeBlock.mutate(t.id, {
+                onSettled: () => setSelectingBlock(null),
+                onSuccess: () => refetchBlock(),
+              });
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    });
   }
 
   function handleBuyBlockCash(t: BlockTemplate) {
-    Alert.alert(
-      `Buy ${t.name} — Cash`,
-      `Your block activates immediately. You have 72 hours to pay ${formatGBP(t.price_pence)} in cash to a class leader, or your block will be paused until paid. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Activate',
-          onPress: () => {
-            setSelectingBlock({ id: t.id, method: 'cash' });
-            createCashBlock.mutate(t.id, {
-              onSettled: () => setSelectingBlock(null),
-              onSuccess: () => refetchBlock(),
-            });
+    requireAuth(() => {
+      Alert.alert(
+        `Buy ${t.name} — Cash`,
+        `Your block activates immediately. You have 72 hours to pay ${formatGBP(t.price_pence)} in cash to a class leader, or your block will be paused until paid. Continue?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Activate',
+            onPress: () => {
+              setSelectingBlock({ id: t.id, method: 'cash' });
+              createCashBlock.mutate(t.id, {
+                onSettled: () => setSelectingBlock(null),
+                onSuccess: () => refetchBlock(),
+              });
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    });
   }
 
   function handleCancelBlock(b: BlockWithDerived) {
