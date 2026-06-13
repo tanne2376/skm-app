@@ -49,6 +49,11 @@ interface RosterRow {
 }
 import { PaymentStatusBadge } from '@/components/ui/Badge';
 
+// Module-level constant so useRealtimeInvalidate's dependency array stays
+// referentially stable across re-renders (an inline literal would tear
+// down and recreate the realtime channel on every render).
+const HOME_BOOKINGS_QUERY_KEY = ['class_sessions'] as const;
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -80,7 +85,7 @@ export default function HomeScreen() {
   // claim flow rather than the normal book flow.
   const [claimingSession, setClaimingSession] = useState<ClassSessionWithDetails | null>(null);
 
-  useRealtimeInvalidate('home-bookings', 'bookings', undefined, ['class_sessions']);
+  useRealtimeInvalidate('home-bookings', 'bookings', undefined, HOME_BOOKINGS_QUERY_KEY);
 
   // Can the user book for free with their membership?
   const canUseMembership = (() => {

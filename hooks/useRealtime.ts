@@ -2,12 +2,19 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
-/** Subscribe to Postgres changes on a table and invalidate a TanStack Query key on any change */
+/**
+ * Subscribe to Postgres changes on a table and invalidate a TanStack Query
+ * key on any change.
+ *
+ * `queryKey` must be a referentially stable array (module-level constant or
+ * `useMemo`) — it's used directly in the effect's dependency array, so an
+ * inline array literal would tear the channel down on every re-render.
+ */
 export function useRealtimeInvalidate(
   channelName: string,
   table: string,
   filter: string | undefined,
-  queryKey: unknown[],
+  queryKey: ReadonlyArray<string | number>,
 ) {
   const queryClient = useQueryClient();
 
@@ -31,12 +38,12 @@ export function useRealtimeInvalidate(
 
     channel
       .on('postgres_changes', config as any, () => {
-        queryClient.invalidateQueries({ queryKey });
+        queryClient.invalidateQueries({ queryKey: [...queryKey] });
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [channelName, table, filter, queryClient, queryKey.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelName, table, filter, queryClient, queryKey]);
 }
