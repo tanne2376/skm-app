@@ -25,6 +25,26 @@ export default function SettingsScreen() {
 
   const isTeacherOrAdmin = role === 'teacher' || role === 'admin';
 
+  // Hoisted above the guest early-return so hook order stays stable when
+  // session toggles (sign-in/sign-out). Otherwise React throws on the
+  // transition because the hook count changes.
+  const updateProfileMutation = useMutation({
+    mutationFn: async () => {
+      if (!fullName.trim()) throw new Error('Name cannot be empty.');
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: fullName.trim(), phone: phone.trim() || null })
+        .eq('id', profile!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      setEditing(false);
+      Alert.alert('Saved', 'Profile updated.');
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
   // Guest layout: no profile/account/sign-out, but keep Legal + About visible.
   if (!session) {
     return (
@@ -80,23 +100,6 @@ export default function SettingsScreen() {
       </View>
     );
   }
-
-  const updateProfileMutation = useMutation({
-    mutationFn: async () => {
-      if (!fullName.trim()) throw new Error('Name cannot be empty.');
-      const { error } = await supabase
-        .from('profiles')
-        .update({ full_name: fullName.trim(), phone: phone.trim() || null })
-        .eq('id', profile!.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      setEditing(false);
-      Alert.alert('Saved', 'Profile updated.');
-    },
-    onError: (e: Error) => Alert.alert('Error', e.message),
-  });
 
   function handleSignOut() {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
