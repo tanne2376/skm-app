@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { COLORS } from '@/constants';
 
 export default function Index() {
-  const { session, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -14,9 +14,7 @@ export default function Index() {
     );
   }
 
-  if (session) {
-    return <Redirect href="/(app)/home" />;
-  }
-
-  return <Redirect href="/(auth)/login" />;
+  // Guests land on the same home screen as signed-in students; gated
+  // actions route to login on tap. See useRequireAuth.
+  return <Redirect href="/(app)/home" />;
 }

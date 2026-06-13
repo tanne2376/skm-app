@@ -16,7 +16,7 @@ const TERMS_URL = 'https://tanne2376.github.io/skm-app/terms.html';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, role, signOut } = useAuth();
+  const { session, profile, role, signOut } = useAuth();
   const queryClient = useQueryClient();
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
@@ -24,6 +24,62 @@ export default function SettingsScreen() {
   const [editing, setEditing] = useState(false);
 
   const isTeacherOrAdmin = role === 'teacher' || role === 'admin';
+
+  // Guest layout: no profile/account/sign-out, but keep Legal + About visible.
+  if (!session) {
+    return (
+      <View style={styles.container}>
+        <ScreenHeader title="Settings" />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <Card>
+            <Text style={styles.guestTitle}>Sign in to your account</Text>
+            <Text style={styles.guestBody}>
+              Create an account or sign in to book classes, manage your membership, and view your bookings.
+            </Text>
+            <Button
+              variant="primary"
+              size="md"
+              onPress={() => router.push('/(auth)/login')}
+              style={styles.guestPrimary}
+            >
+              Sign In
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              onPress={() => router.push('/(auth)/register')}
+            >
+              Create Account
+            </Button>
+          </Card>
+
+          <Card>
+            <Text style={styles.sectionTitle}>Legal</Text>
+            <View style={styles.adminLinks}>
+              <SettingsRow
+                label="Privacy Policy"
+                onPress={() => Linking.openURL(PRIVACY_URL).catch(() =>
+                  Alert.alert('Error', 'Unable to open Privacy Policy.')
+                )}
+              />
+              <SettingsRow
+                label="Terms of Service"
+                onPress={() => Linking.openURL(TERMS_URL).catch(() =>
+                  Alert.alert('Error', 'Unable to open Terms of Service.')
+                )}
+              />
+            </View>
+          </Card>
+
+          <Card>
+            <Text style={styles.sectionTitle}>About</Text>
+            <Text style={styles.sectionDesc}>Switch-Kick Mafia · v1.0.0</Text>
+            <Text style={[styles.sectionDesc, { marginTop: 4 }]}>Built for SKM</Text>
+          </Card>
+        </ScrollView>
+      </View>
+    );
+  }
 
   const updateProfileMutation = useMutation({
     mutationFn: async () => {
@@ -200,4 +256,7 @@ const styles = StyleSheet.create({
   settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.grey[800] },
   settingsRowLabel: { color: COLORS.white, fontSize: 15 },
   settingsRowArrow: { color: COLORS.grey[600], fontSize: 20 },
+  guestTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  guestBody: { color: COLORS.grey[400], fontSize: 14, lineHeight: 20, marginBottom: 16 },
+  guestPrimary: { marginBottom: 8 },
 });

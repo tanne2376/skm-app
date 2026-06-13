@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useAuth } from '@/hooks/useAuth';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useActiveBlock } from '@/hooks/useActiveBlock';
 import { useBookOneToOneWithBlock } from '@/hooks/useBlockPurchase';
 import { supabase, invokeFunction } from '@/lib/supabase';
@@ -21,6 +22,7 @@ export default function OneToOneDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const requireAuth = useRequireAuth();
   const { data: block } = useActiveBlock();
   const bookWithBlock = useBookOneToOneWithBlock();
   const queryClient = useQueryClient();
@@ -297,14 +299,14 @@ export default function OneToOneDetailScreen() {
           <Button
             variant="primary"
             size="lg"
-            onPress={() => bookWithBlock.mutate(id)}
+            onPress={() => requireAuth(() => bookWithBlock.mutate(id))}
             loading={bookWithBlock.isPending}
           >
             {`Book with block (${block.sessions_remaining} session${block.sessions_remaining === 1 ? '' : 's'} left)`}
           </Button>
         )}
         {canBook && !showPayment && !block?.is_usable && (
-          <Button variant="primary" size="lg" onPress={() => setShowPayment(true)}>
+          <Button variant="primary" size="lg" onPress={() => requireAuth(() => setShowPayment(true))}>
             {`Book for ${formatGBP(oto.price)}`}
           </Button>
         )}

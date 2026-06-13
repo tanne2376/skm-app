@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { COLORS } from '@/constants';
 
@@ -93,6 +93,15 @@ export default function LoginScreen() {
             <Text style={styles.linkText}>Don't have an account? <Text style={styles.linkAccent}>Register</Text></Text>
           </TouchableOpacity>
         </Link>
+
+        <TouchableOpacity
+          style={styles.guestButton}
+          onPress={() => router.replace('/(app)/home')}
+          accessibilityRole="button"
+          accessibilityLabel="Continue browsing without an account"
+        >
+          <Text style={styles.guestText}>Continue browsing</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -179,5 +188,15 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: COLORS.accent,
     fontWeight: '600',
+  },
+  guestButton: {
+    alignItems: 'center',
+    marginTop: 32,
+    paddingVertical: 8,
+  },
+  guestText: {
+    color: COLORS.grey[600],
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 });

@@ -28,19 +28,22 @@ export default function OneToOnesScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('available');
   const effectiveTab: Tab = isAdmin ? 'my-sessions' : activeTab;
 
-  // Available: sessions from others that are still available (RLS already filters out own)
+  // Available: sessions from others that are still available (RLS already filters out own).
+  // Runs for guests too — they can browse but tapping Book routes to login.
   const { data: available, isLoading: loadingAvailable, refetch: refetchAvailable } = useQuery<OneToOneWithDetails[]>({
-    queryKey: ['one_to_ones', 'available', userId],
-    enabled: !!session && !isAdmin,
+    queryKey: ['one_to_ones', 'available', userId ?? 'guest'],
+    enabled: !isAdmin,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('one_to_ones')
         .select(`*, teacher:profiles!teacher_id(id, full_name), location:locations(id, name, address), block:blocks!block_id(id, payment_status, payment_method)`)
         .eq('status', 'available')
-        .neq('creator_id', userId!)
         .gte('session_date', new Date().toISOString().split('T')[0])
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
+      // Signed-in users hide their own creations; guests see everything.
+      if (userId) query = query.neq('creator_id', userId);
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as OneToOneWithDetails[];
     },
@@ -98,6 +101,9 @@ export default function OneToOnesScreen() {
     { key: 'my-sessions', label: 'My Sessions' },
   ];
 
+  const isGuest = !session;
+  const showGuestMySessions = isGuest && effectiveTab === 'my-sessions';
+
   return (
     <View style={styles.container}>
       <ScreenHeader title="1-to-1 Sessions" />
@@ -116,6 +122,23 @@ export default function OneToOnesScreen() {
         </View>
       )}
 
+      {showGuestMySessions ? (
+        <View style={styles.guestCardWrap}>
+          <Card>
+            <Text style={styles.guestTitle}>Log in to see your sessions</Text>
+            <Text style={styles.guestBody}>
+              Sign in to view 1-to-1 sessions you've booked or created.
+            </Text>
+            <Button
+              variant="primary"
+              size="md"
+              onPress={() => router.push('/(auth)/login')}
+            >
+              Sign In
+            </Button>
+          </Card>
+        </View>
+      ) : (
       <FlatList
         data={items ?? []}
         keyExtractor={(item) => item.id}
@@ -185,6 +208,7 @@ export default function OneToOnesScreen() {
         }
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       />
+      )}
     </View>
   );
 }
@@ -323,4 +347,7 @@ const styles = StyleSheet.create({
   },
   blockBannerTitle: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
   blockBannerSub: { color: COLORS.grey[400], fontSize: 12, marginTop: 2 },
+  guestCardWrap: { padding: 16 },
+  guestTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700', marginBottom: 8 },
+  guestBody: { color: COLORS.grey[400], fontSize: 14, lineHeight: 20, marginBottom: 16 },
 });

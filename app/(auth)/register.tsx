@@ -140,6 +140,15 @@ export default function RegisterScreen() {
             <Text style={styles.linkText}>Already have an account? <Text style={styles.linkAccent}>Sign In</Text></Text>
           </TouchableOpacity>
         </Link>
+
+        <TouchableOpacity
+          style={styles.guestButton}
+          onPress={() => router.replace('/(app)/home')}
+          accessibilityRole="button"
+          accessibilityLabel="Continue browsing without an account"
+        >
+          <Text style={styles.guestText}>Continue browsing</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -208,5 +217,15 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: COLORS.accent,
     fontWeight: '600',
+  },
+  guestButton: {
+    alignItems: 'center',
+    marginTop: 32,
+    paddingVertical: 8,
+  },
+  guestText: {
+    color: COLORS.grey[600],
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 });

@@ -51,10 +51,11 @@ function AuthGuard() {
       return;
     }
 
+    // Signed-in users dropped on a login/register screen go straight to home.
+    // Guests are free to roam the (app) group — gated actions redirect to
+    // login on tap via useRequireAuth.
     if (session && inAuthGroup) {
       router.replace('/(app)/home');
-    } else if (!session && !inAuthGroup && segments[0] !== undefined) {
-      router.replace('/(auth)/login');
     }
   }, [session, isLoading, isPasswordRecovery, isEmailVerified, segments]);
 

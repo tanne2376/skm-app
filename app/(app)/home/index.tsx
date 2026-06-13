@@ -27,6 +27,7 @@ import { useDefaultClassLeaderName } from '@/hooks/useDefaultClassLeader';
 import { getClassLeaderName } from '@/lib/teacherName';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useBookingBlocked } from '@/hooks/useLateCancellations';
 import { supabase, invokeFunction } from '@/lib/supabase';
 import { ClassSessionWithDetails, PaymentMethod } from '@/types';
@@ -52,6 +53,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { role, session: authSession } = useAuth();
+  const requireAuth = useRequireAuth();
   const isAdmin = role === 'admin';
   const { data: allSessions, isLoading, isFetching, refetch } = useUpcomingSessions();
 
@@ -215,9 +217,9 @@ export default function HomeScreen() {
           ) : (
             <SessionCard
               session={item}
-              onBook={() => handleBookPress(item)}
-              onCancel={() => handleCancel(item)}
-              onClaim={() => handleClaim(item)}
+              onBook={() => requireAuth(() => handleBookPress(item))}
+              onCancel={() => requireAuth(() => handleCancel(item))}
+              onClaim={() => requireAuth(() => handleClaim(item))}
               isMutating={isMutating}
               freeWithMembership={canUseMembership}
               isBlockedFromBooking={isBlockedFromBooking}
