@@ -12,17 +12,15 @@ export function useRealtimeInvalidate(
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // supabase-js caches channels by name in a global registry. After a
-    // fast remount (e.g. navigating home → login → home), the prior channel
-    // may still be in the registry with .subscribe() already called, and
-    // .on() would throw "cannot add postgres_changes callbacks after
-    // subscribe()". Drain any leftover before creating a fresh one.
-    const stale = supabase
-      .getChannels()
-      .find((c) => c.topic === `realtime:${channelName}`);
-    if (stale) supabase.removeChannel(stale);
-
-    const channel = supabase.channel(channelName);
+    // Append a per-mount random suffix so each invocation owns a distinct
+    // channel. supabase-js keeps a channels registry keyed by topic, and
+    // removeChannel is async — under StrictMode double-effects or fast
+    // navigation, the previous channel can still be present and already
+    // .subscribe()d when the next mount runs, which makes .on() throw
+    // "cannot add postgres_changes callbacks after subscribe()". A unique
+    // name per mount sidesteps the collision entirely.
+    const uniqueName = `${channelName}-${Math.random().toString(36).slice(2, 10)}`;
+    const channel = supabase.channel(uniqueName);
 
     const config: Parameters<typeof channel.on>[1] = {
       event: '*',
