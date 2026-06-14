@@ -64,12 +64,13 @@ export default function HomeScreen() {
 
   // Hide past sessions — admin gets a 2hr buffer after session ends to collect payments
   const now = new Date();
+  const userId = authSession?.user.id;
   const sessions = allSessions?.filter((s) => {
     const sessionEnd = new Date(`${s.session_date}T${s.end_time}`);
     const cutoff = isAdmin
       ? new Date(sessionEnd.getTime() + 2 * 60 * 60 * 1000)
       : new Date(`${s.session_date}T${s.start_time}`);
-    return cutoff > now && (isAdmin || s.teacher?.id !== authSession?.user.id);
+    return cutoff > now && (isAdmin || !userId || s.teacher?.id !== userId);
   });
   const { data: membership } = useActiveMembership();
   const { data: blockStatus } = useBookingBlocked();
