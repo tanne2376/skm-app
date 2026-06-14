@@ -324,7 +324,7 @@ function TimetableTab() {
                 <Card style={styles.card}>
                   <Text style={styles.cardName}>{template.name}</Text>
                   <Text style={styles.cardMeta}>
-                    {template.start_time.slice(0, 5)}–{template.end_time.slice(0, 5)} · Cap {template.capacity}
+                    {template.start_time.slice(0, 5)}–{template.end_time.slice(0, 5)} · Cap {template.capacity} · £{(template.price / 100).toFixed(2)}
                   </Text>
                   <Text style={styles.cardLeader}>
                     {template.default_teacher?.full_name ?? 'No leader assigned'}

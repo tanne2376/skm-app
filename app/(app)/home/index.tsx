@@ -412,7 +412,7 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
         <View style={styles.adminInfo}>
           <Text style={styles.adminClassName}>{session.class_templates?.name}</Text>
           <Text style={styles.adminMeta}>
-            {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
+            {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)} · {formatGBP(session.effective_price)}
           </Text>
           <Text style={styles.adminTeacher}>{teacherName}</Text>
         </View>
