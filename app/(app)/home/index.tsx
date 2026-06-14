@@ -49,6 +49,11 @@ interface RosterRow {
 }
 import { PaymentStatusBadge } from '@/components/ui/Badge';
 
+// Module-level constant so useRealtimeInvalidate's dependency array stays
+// referentially stable across re-renders (an inline literal would tear
+// down and recreate the realtime channel on every render).
+const HOME_BOOKINGS_QUERY_KEY = ['class_sessions'] as const;
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -59,12 +64,13 @@ export default function HomeScreen() {
 
   // Hide past sessions — admin gets a 2hr buffer after session ends to collect payments
   const now = new Date();
+  const userId = authSession?.user.id;
   const sessions = allSessions?.filter((s) => {
     const sessionEnd = new Date(`${s.session_date}T${s.end_time}`);
     const cutoff = isAdmin
       ? new Date(sessionEnd.getTime() + 2 * 60 * 60 * 1000)
       : new Date(`${s.session_date}T${s.start_time}`);
-    return cutoff > now && (isAdmin || s.teacher?.id !== authSession?.user.id);
+    return cutoff > now && (isAdmin || !userId || s.teacher?.id !== userId);
   });
   const { data: membership } = useActiveMembership();
   const { data: blockStatus } = useBookingBlocked();
@@ -80,7 +86,7 @@ export default function HomeScreen() {
   // claim flow rather than the normal book flow.
   const [claimingSession, setClaimingSession] = useState<ClassSessionWithDetails | null>(null);
 
-  useRealtimeInvalidate('home-bookings', 'bookings', undefined, ['class_sessions']);
+  useRealtimeInvalidate('home-bookings', 'bookings', undefined, HOME_BOOKINGS_QUERY_KEY);
 
   // Can the user book for free with their membership?
   const canUseMembership = (() => {
@@ -406,7 +412,7 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
         <View style={styles.adminInfo}>
           <Text style={styles.adminClassName}>{session.class_templates?.name}</Text>
           <Text style={styles.adminMeta}>
-            {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
+            {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)} · {formatGBP(session.effective_price)}
           </Text>
           <Text style={styles.adminTeacher}>{teacherName}</Text>
         </View>

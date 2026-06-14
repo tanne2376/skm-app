@@ -119,6 +119,7 @@ function TimetableTab() {
   const [editEnd, setEditEnd] = useState('');
   const [editTeacher, setEditTeacher] = useState<Pick<Profile, 'id' | 'full_name'> | null>(null);
   const [editCapacity, setEditCapacity] = useState('');
+  const [editPrice, setEditPrice] = useState('');
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -156,6 +157,7 @@ function TimetableTab() {
     setEditEnd(template.end_time.slice(0, 5));
     setEditTeacher(template.default_teacher ?? null);
     setEditCapacity(String(template.capacity));
+    setEditPrice((template.price / 100).toFixed(2));
     setEditingTemplate(template);
   }
 
@@ -166,6 +168,8 @@ function TimetableTab() {
       if (!editStart.match(/^\d{2}:\d{2}$/) || !editEnd.match(/^\d{2}:\d{2}$/)) throw new Error('Times must be HH:MM.');
       const cap = parseInt(editCapacity, 10);
       if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
+      const price = Math.round(parseFloat(editPrice) * 100);
+      if (isNaN(price) || price < 0) throw new Error('Price must be 0 or more.');
 
       const teacherChanged = editTeacher?.id !== editingTemplate.default_teacher?.id;
 
@@ -176,6 +180,7 @@ function TimetableTab() {
           start_time: editStart,
           end_time: editEnd,
           capacity: cap,
+          price,
           teacher_id: editTeacher?.id ?? null,
         })
         .eq('id', editingTemplate.id);
@@ -319,7 +324,7 @@ function TimetableTab() {
                 <Card style={styles.card}>
                   <Text style={styles.cardName}>{template.name}</Text>
                   <Text style={styles.cardMeta}>
-                    {template.start_time.slice(0, 5)}–{template.end_time.slice(0, 5)} · Cap {template.capacity}
+                    {template.start_time.slice(0, 5)}–{template.end_time.slice(0, 5)} · Cap {template.capacity} · £{(template.price / 100).toFixed(2)}
                   </Text>
                   <Text style={styles.cardLeader}>
                     {template.default_teacher?.full_name ?? 'No leader assigned'}
@@ -356,8 +361,16 @@ function TimetableTab() {
               </View>
             </View>
 
-            <Text style={styles.fieldLabel}>Capacity</Text>
-            <TextInput style={styles.input} value={editCapacity} onChangeText={setEditCapacity} keyboardType="number-pad" placeholderTextColor={COLORS.grey[600]} />
+            <View style={styles.timeRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Capacity</Text>
+                <TextInput style={styles.input} value={editCapacity} onChangeText={setEditCapacity} keyboardType="number-pad" placeholderTextColor={COLORS.grey[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Price (£)</Text>
+                <TextInput style={styles.input} value={editPrice} onChangeText={setEditPrice} keyboardType="decimal-pad" placeholderTextColor={COLORS.grey[600]} />
+              </View>
+            </View>
 
             <Text style={styles.fieldLabel}>Class Leader</Text>
             <TouchableOpacity style={styles.pickerBtn} onPress={() => setShowTeacherPicker(true)}>
