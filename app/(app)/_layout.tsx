@@ -99,9 +99,6 @@ export default function AppLayout() {
           tabBarIcon: ({ focused, color }) => <Feather name="settings" size={20} color={color} />,
         }}
       />
-
-      {/* ── Hidden: sub-nav only, not a tab ─────────────────────── */}
-      <Tabs.Screen name="timetable" options={{ href: null }} />
     </Tabs>
   );
 }
