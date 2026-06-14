@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     return errorResponse('Failed to check outstanding balance.', 500);
   }
   if (typeof owedPence === 'number' && owedPence > 0) {
-    return jsonResponse({ blocked: true, owed_pence: owedPence });
+    return jsonResponse({ owed_pence: owedPence });
   }
 
   const { data: activeMemberships, error: membershipError } = await adminClient

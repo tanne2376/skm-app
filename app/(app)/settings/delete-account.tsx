@@ -34,17 +34,17 @@ export default function DeleteAccountScreen() {
             try {
               const { data, error } = await invokeFunction<{
                 success?: boolean;
-                blocked?: boolean;
                 owed_pence?: number;
               }>('delete-account');
               if (error) {
                 Alert.alert('Error', error.message);
                 return;
               }
-              if (data?.blocked && (data.owed_pence ?? 0) > 0) {
+              const owedPence = data?.owed_pence ?? 0;
+              if (owedPence > 0) {
                 Alert.alert(
                   'Outstanding balance',
-                  `You owe £${((data.owed_pence ?? 0) / 100).toFixed(2)} in unpaid cash. Please speak to a teacher at your next class to settle before deleting your account.`,
+                  `You owe £${(owedPence / 100).toFixed(2)} in unpaid cash. Please speak to a teacher at your next class to settle before deleting your account.`,
                 );
                 return;
               }
