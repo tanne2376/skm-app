@@ -22,6 +22,21 @@ Deno.serve(async (req) => {
 
   const adminClient = createAdminClient();
 
+  // Soft block: refuse to delete while the user has outstanding cash.
+  // Apple 5.1.1(v) needs a deletion path, so surface the amount + a
+  // settle-up instruction rather than failing silently.
+  const { data: owedPence, error: owedError } = await adminClient.rpc(
+    'get_user_owed_amount',
+    { p_user_id: user.id },
+  );
+  if (owedError) {
+    console.error('owed-amount lookup failed:', owedError);
+    return errorResponse('Failed to check outstanding balance.', 500);
+  }
+  if (typeof owedPence === 'number' && owedPence > 0) {
+    return jsonResponse({ owed_pence: owedPence });
+  }
+
   const { data: activeMemberships, error: membershipError } = await adminClient
     .from('memberships')
     .select('id, stripe_subscription_id, payment_method')

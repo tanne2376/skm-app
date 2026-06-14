@@ -146,7 +146,7 @@ function TimetableTab() {
   const { data: allProfiles } = useQuery<Pick<Profile, 'id' | 'full_name' | 'role'>[]>({
     queryKey: ['all_profiles'],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name, role').order('full_name');
+      const { data } = await supabase.from('profiles').select('id, full_name, role').is('deleted_at', null).order('full_name');
       return (data ?? []) as Pick<Profile, 'id' | 'full_name' | 'role'>[];
     },
   });
