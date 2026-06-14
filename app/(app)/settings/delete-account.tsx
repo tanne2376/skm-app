@@ -32,9 +32,20 @@ export default function DeleteAccountScreen() {
           onPress: async () => {
             setLoading(true);
             try {
-              const { error } = await invokeFunction('delete-account');
+              const { data, error } = await invokeFunction<{
+                success?: boolean;
+                blocked?: boolean;
+                owed_pence?: number;
+              }>('delete-account');
               if (error) {
                 Alert.alert('Error', error.message);
+                return;
+              }
+              if (data?.blocked && (data.owed_pence ?? 0) > 0) {
+                Alert.alert(
+                  'Outstanding balance',
+                  `You owe £${((data.owed_pence ?? 0) / 100).toFixed(2)} in unpaid cash. Please speak to a teacher at your next class to settle before deleting your account.`,
+                );
                 return;
               }
               const { error: signOutError } = await supabase.auth.signOut();
