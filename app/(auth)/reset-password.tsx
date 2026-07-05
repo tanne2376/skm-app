@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -13,6 +12,7 @@ import {
 import { COLORS } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 
 export default function ResetPasswordScreen() {
   const { clearPasswordRecovery } = useAuth();
@@ -57,26 +57,22 @@ export default function ResetPasswordScreen() {
         <Text style={styles.subtitle}>Enter your new password below.</Text>
 
         <Text style={styles.label}>New Password</Text>
-        <TextInput
+        <PasswordInput
           style={styles.input}
           value={newPassword}
           onChangeText={setNewPassword}
-          secureTextEntry
           autoComplete="new-password"
           textContentType="newPassword"
-          placeholderTextColor={COLORS.grey[600]}
           placeholder="••••••••"
         />
 
         <Text style={styles.label}>Confirm Password</Text>
-        <TextInput
+        <PasswordInput
           style={styles.input}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
-          secureTextEntry
           autoComplete="new-password"
           textContentType="newPassword"
-          placeholderTextColor={COLORS.grey[600]}
           placeholder="••••••••"
         />
 
