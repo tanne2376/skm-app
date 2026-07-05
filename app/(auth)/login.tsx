@@ -13,6 +13,7 @@ import {
 import { Link, router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { COLORS } from '@/constants';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -58,14 +59,12 @@ export default function LoginScreen() {
         />
 
         <Text style={styles.label}>Password</Text>
-        <TextInput
+        <PasswordInput
           style={styles.input}
           value={password}
           onChangeText={setPassword}
-          secureTextEntry
           autoComplete="password"
           textContentType="password"
-          placeholderTextColor={COLORS.grey[600]}
           placeholder="••••••••"
         />
 

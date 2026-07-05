@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { supabase } from '@/lib/supabase';
 
 export default function ChangePasswordScreen() {
@@ -65,36 +66,30 @@ export default function ChangePasswordScreen() {
       <View style={styles.content}>
         <Card>
           <Text style={styles.fieldLabel}>Current Password</Text>
-          <TextInput
+          <PasswordInput
             style={styles.input}
             value={oldPassword}
             onChangeText={setOldPassword}
-            secureTextEntry
             autoComplete="current-password"
             textContentType="password"
-            placeholderTextColor={COLORS.grey[600]}
           />
 
           <Text style={styles.fieldLabel}>New Password</Text>
-          <TextInput
+          <PasswordInput
             style={styles.input}
             value={newPassword}
             onChangeText={setNewPassword}
-            secureTextEntry
             autoComplete="new-password"
             textContentType="newPassword"
-            placeholderTextColor={COLORS.grey[600]}
           />
 
           <Text style={styles.fieldLabel}>Confirm New Password</Text>
-          <TextInput
+          <PasswordInput
             style={styles.input}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
-            secureTextEntry
             autoComplete="new-password"
             textContentType="newPassword"
-            placeholderTextColor={COLORS.grey[600]}
           />
 
           <Button

@@ -14,6 +14,7 @@ import {
 import { Link, router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { COLORS } from '@/constants';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 
 export default function RegisterScreen() {
   const { signUp } = useAuth();
@@ -99,26 +100,22 @@ export default function RegisterScreen() {
         />
 
         <Text style={styles.label}>Password</Text>
-        <TextInput
+        <PasswordInput
           style={styles.input}
           value={password}
           onChangeText={setPassword}
-          secureTextEntry
           autoComplete="new-password"
           textContentType="newPassword"
-          placeholderTextColor={COLORS.grey[600]}
           placeholder="Minimum 8 characters"
         />
 
         <Text style={styles.label}>Confirm Password</Text>
-        <TextInput
+        <PasswordInput
           style={styles.input}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
-          secureTextEntry
           autoComplete="new-password"
           textContentType="newPassword"
-          placeholderTextColor={COLORS.grey[600]}
           placeholder="••••••••"
         />
 
