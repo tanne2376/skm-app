@@ -306,7 +306,18 @@ revoke execute on function public.get_user_unconfirmed_cash_sessions(uuid) from 
 -- no `kind`/one-to-one union, and critically no auth guard whatsoever.
 -- This restores the self-or-admin guard against the function as it
 -- actually exists in production today.)
-create or replace function public.get_user_late_cancellation_history(p_user_id uuid)
+--
+-- DROP + CREATE rather than CREATE OR REPLACE: migration 024's tracked
+-- signature has an extra `kind` column that the live function does not.
+-- CREATE OR REPLACE rejects a return-type change, so replaying migrations
+-- 001-036 from scratch (e.g. a fresh local DB) would hit 024's `kind`-
+-- having version first and then fail here. DROP IF EXISTS makes this safe
+-- regardless of which prior signature is in play. Grants are re-applied
+-- explicitly below since DROP does not preserve them like CREATE OR
+-- REPLACE would.
+drop function if exists public.get_user_late_cancellation_history(uuid);
+
+create function public.get_user_late_cancellation_history(p_user_id uuid)
 returns table(id uuid, session_id uuid, class_name text, session_date date, session_start_time text, cancelled_at timestamptz)
 language plpgsql
 stable
@@ -334,6 +345,10 @@ begin
 end;
 $function$;
 
+-- DROP does not preserve prior grants like CREATE OR REPLACE does, so
+-- authenticated access is re-established explicitly rather than assumed
+-- from whatever default privileges the environment happens to have.
+grant execute on function public.get_user_late_cancellation_history(uuid) to authenticated;
 revoke execute on function public.get_user_late_cancellation_history(uuid) from anon;
 revoke execute on function public.get_user_late_cancellation_history(uuid) from public;
 
