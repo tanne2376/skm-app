@@ -3,6 +3,7 @@ import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 import { membershipWeekStart } from '../_shared/membershipWeek.ts';
 import { notify, notifyMany } from '../_shared/notify.ts';
+import { connectRefundParams } from '../_shared/connect.ts';
 
 const CANCELLATION_WINDOW_HOURS = 3;
 
@@ -60,6 +61,7 @@ Deno.serve(async (req) => {
         await stripe.refunds.create({
           payment_intent: booking.stripe_payment_intent_id,
           reason: 'requested_by_customer',
+          ...connectRefundParams(),
         });
         refunded = true;
         newPaymentStatus = 'refunded';
@@ -155,6 +157,7 @@ Deno.serve(async (req) => {
             await stripe.refunds.create({
               payment_intent: convertTarget.stripe_payment_intent_id!,
               reason: 'requested_by_customer',
+              ...connectRefundParams(),
             });
             refundIssued = true;
           } catch (e) {

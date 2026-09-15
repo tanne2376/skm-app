@@ -18,6 +18,7 @@ import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 import { notifyMany } from '../_shared/notify.ts';
+import { connectRefundParams } from '../_shared/connect.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -119,6 +120,7 @@ Deno.serve(async (req) => {
         await stripe.refunds.create({
           payment_intent: b.stripe_payment_intent_id,
           reason: 'requested_by_customer',
+          ...connectRefundParams(),
         });
         // Only flip the booking to 'refunded' on Stripe success — the
         // row should accurately reflect the customer's bank state, not

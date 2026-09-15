@@ -2,6 +2,7 @@
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { connectChargeParams } from '../_shared/connect.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -132,6 +133,7 @@ Deno.serve(async (req) => {
           template_id,
           student_id: user.id,
         },
+        ...connectChargeParams(block.price_pence_snapshot),
       },
       { idempotencyKey: `block_purchase:${blockId}` },
     );

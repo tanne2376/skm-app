@@ -25,6 +25,7 @@ import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
 import { membershipWeekStart } from '../_shared/membershipWeek.ts';
+import { connectChargeParams } from '../_shared/connect.ts';
 
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 
@@ -266,6 +267,7 @@ Deno.serve(async (req) => {
       student_id: user.id,
       booking_id: bookingId,
     },
+    ...connectChargeParams(amountPence),
   });
 
   // Move booking to confirmed-but-pending immediately. If PaymentSheet
