@@ -1,6 +1,7 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { connectChargeParams } from '../_shared/connect.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -112,6 +113,7 @@ Deno.serve(async (req) => {
       one_to_one_id: oneToOneId ?? '',
       student_id: user.id,
     },
+    ...connectChargeParams(amountPence),
   });
 
   // ── Insert pending booking ─────────────────────────────────────────────────

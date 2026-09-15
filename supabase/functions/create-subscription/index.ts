@@ -1,6 +1,7 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { connectSubscriptionParams } from '../_shared/connect.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -83,6 +84,7 @@ Deno.serve(async (req) => {
     payment_behavior: 'default_incomplete',
     payment_settings: { save_default_payment_method: 'on_subscription' },
     expand: ['latest_invoice.confirmation_secret'],
+    ...connectSubscriptionParams(),
   });
 
   const latestInvoice = subscription.latest_invoice as any;
