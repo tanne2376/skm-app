@@ -15,6 +15,15 @@
 const connectedAccountId = Deno.env.get('STRIPE_CONNECTED_ACCOUNT_ID') || undefined;
 const platformFeeBps = Number(Deno.env.get('STRIPE_PLATFORM_FEE_BPS') ?? '500');
 
+// Fail loud on a malformed secret rather than silently sending Stripe an
+// invalid application_fee_percent (max 2 decimal places, 0-100%) or a
+// negative/NaN application_fee_amount.
+if (!Number.isInteger(platformFeeBps) || platformFeeBps < 0 || platformFeeBps > 10000) {
+  throw new Error(
+    `STRIPE_PLATFORM_FEE_BPS must be an integer from 0 through 10000 (got ${Deno.env.get('STRIPE_PLATFORM_FEE_BPS')})`,
+  );
+}
+
 export function isConnectEnabled(): boolean {
   return Boolean(connectedAccountId);
 }
