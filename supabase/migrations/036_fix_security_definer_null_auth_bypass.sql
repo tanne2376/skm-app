@@ -86,6 +86,7 @@ end;
 $function$;
 
 revoke execute on function public.is_user_booking_blocked(uuid) from anon;
+revoke execute on function public.is_user_booking_blocked(uuid) from public;
 
 -- ── get_late_cancellation_count: previously had no auth check at all ─────
 create or replace function public.get_late_cancellation_count(p_user_id uuid)
@@ -113,6 +114,7 @@ end;
 $function$;
 
 revoke execute on function public.get_late_cancellation_count(uuid) from anon;
+revoke execute on function public.get_late_cancellation_count(uuid) from public;
 
 -- ── get_user_payment_history: NULL-bypass on the self-or-admin check ─────
 create or replace function public.get_user_payment_history(p_user_id uuid)
@@ -137,6 +139,7 @@ end;
 $function$;
 
 revoke execute on function public.get_user_payment_history(uuid) from anon;
+revoke execute on function public.get_user_payment_history(uuid) from public;
 
 -- ── get_user_owed_amount: NULL-bypass on the self-or-admin check ─────────
 create or replace function public.get_user_owed_amount(p_user_id uuid)
@@ -147,7 +150,9 @@ security definer
 set search_path to 'public'
 as $function$
 begin
-  if auth.uid() is distinct from p_user_id and coalesce(get_user_role()::text, '') <> 'admin' then
+  if auth.role() is distinct from 'service_role'
+     and auth.uid() is distinct from p_user_id
+     and coalesce(get_user_role()::text, '') <> 'admin' then
     raise exception 'Not authorised to view owed amount for this user.'
       using errcode = '42501';
   end if;
@@ -209,6 +214,7 @@ end;
 $function$;
 
 revoke execute on function public.get_user_owed_amount(uuid) from anon;
+revoke execute on function public.get_user_owed_amount(uuid) from public;
 
 -- ── get_user_unconfirmed_cash_sessions: NULL-bypass on self-or-admin ─────
 create or replace function public.get_user_unconfirmed_cash_sessions(p_user_id uuid)
@@ -293,6 +299,7 @@ end;
 $function$;
 
 revoke execute on function public.get_user_unconfirmed_cash_sessions(uuid) from anon;
+revoke execute on function public.get_user_unconfirmed_cash_sessions(uuid) from public;
 
 -- ── get_user_late_cancellation_history: previously had NO auth check ─────
 -- (Live definition had already drifted from what migration 024 shipped —
@@ -328,6 +335,7 @@ end;
 $function$;
 
 revoke execute on function public.get_user_late_cancellation_history(uuid) from anon;
+revoke execute on function public.get_user_late_cancellation_history(uuid) from public;
 
 -- ── confirm_cash_membership: NULL-bypass let anon mark memberships paid ──
 create or replace function public.confirm_cash_membership(p_membership_id uuid)
@@ -367,6 +375,7 @@ end;
 $function$;
 
 revoke execute on function public.confirm_cash_membership(uuid) from anon;
+revoke execute on function public.confirm_cash_membership(uuid) from public;
 
 -- ── confirm_cash_block_payment: NULL-bypass let anon mark blocks paid ────
 create or replace function public.confirm_cash_block_payment(p_block_id uuid)
@@ -405,6 +414,7 @@ end;
 $function$;
 
 revoke execute on function public.confirm_cash_block_payment(uuid) from anon;
+revoke execute on function public.confirm_cash_block_payment(uuid) from public;
 
 -- ── get_class_roster: NULL-bypass exposed any session's roster to anon ───
 create or replace function public.get_class_roster(p_session_id uuid)
@@ -480,6 +490,7 @@ end;
 $function$;
 
 revoke execute on function public.get_class_roster(uuid) from anon;
+revoke execute on function public.get_class_roster(uuid) from public;
 
 -- ── get_users_with_late_cancellations: NULL-bypass exposed the full ──────
 -- ── member list (names, roles, membership status, owed amounts) to anon ──
@@ -541,6 +552,7 @@ end;
 $function$;
 
 revoke execute on function public.get_users_with_late_cancellations() from anon;
+revoke execute on function public.get_users_with_late_cancellations() from public;
 
 -- ── delete_past_one_to_ones: cron/manual cleanup only, no client calls it ─
 -- Not referenced by any Edge Function or app code, and not currently even
