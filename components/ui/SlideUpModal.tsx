@@ -59,7 +59,9 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
         ]}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // 'height' only works for flex-filled sheets; content-sized sheets need
+          // 'padding' so the bottom-anchored content is pushed above the keyboard
+          behavior={fullScreen && Platform.OS === 'android' ? 'height' : 'padding'}
           style={fullScreen ? styles.kavFull : undefined}
         >
           {children}
