@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, StyleSheet, TouchableOpacity } from 'react-native';
+import { Animated, KeyboardAvoidingView, Modal, Platform, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS } from '@/constants';
 
 interface SlideUpModalProps {
@@ -58,7 +58,14 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
           { transform: [{ translateY: sheetY }] },
         ]}
       >
-        {children}
+        <KeyboardAvoidingView
+          // 'height' only works for flex-filled sheets; content-sized sheets need
+          // 'padding' so the bottom-anchored content is pushed above the keyboard
+          behavior={fullScreen && Platform.OS === 'android' ? 'height' : 'padding'}
+          style={fullScreen ? styles.kavFull : undefined}
+        >
+          {children}
+        </KeyboardAvoidingView>
       </Animated.View>
     </Modal>
   );
@@ -80,5 +87,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  kavFull: {
+    flex: 1,
   },
 });
