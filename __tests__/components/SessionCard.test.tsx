@@ -24,7 +24,8 @@ const base: ClassSessionWithDetails = {
   created_at: '2026-01-01T00:00:00Z',
   class_templates: {
     id: 'tmpl-1',
-    name: 'Muay Thai (Beginners)',
+    name: 'Muay Thai',
+    level: 'beginners',
     day_of_week: 1,
     start_time: '18:30:00',
     end_time: '19:30:00',

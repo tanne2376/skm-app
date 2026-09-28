@@ -25,6 +25,16 @@ export const COLORS = {
   },
 } as const;
 
+// Timetable colours per class level: header band, header text, footer tint.
+export const CLASS_LEVELS = {
+  beginners: { label: 'Beginners', band: COLORS.accent, bandText: COLORS.white, tint: COLORS.peach },
+  fighters:  { label: 'Fighters',  band: COLORS.olive, bandText: COLORS.white, tint: COLORS.oliveLight },
+  general:   { label: 'General',   band: '#7A7A7A', bandText: COLORS.white, tint: COLORS.grey[300] },
+  kids:      { label: 'Kids',      band: COLORS.white, bandText: COLORS.black, tint: COLORS.peach },
+} as const;
+
+export const CLASS_LEVEL_ORDER = ['beginners', 'fighters', 'general', 'kids'] as const;
+
 export const CANCELLATION_WINDOW_HOURS = 3;
 export const SESSION_GENERATION_WEEKS_AHEAD = 4;
 

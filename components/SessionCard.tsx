@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { COLORS, CANCELLATION_WINDOW_HOURS } from '@/constants';
+import { COLORS, CANCELLATION_WINDOW_HOURS, CLASS_LEVELS } from '@/constants';
 import { ClassSessionWithDetails } from '@/types';
 import { formatGBP } from '@/lib/stripe';
 import { getClassLeaderName } from '@/lib/teacherName';
@@ -21,31 +21,15 @@ interface SessionCardProps {
 
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 
-// Timetable-style colouring: "Muay Thai (Fighters)" → title "Muay Thai",
-// level "Fighters". Fighter/advanced classes are olive, everything else orange.
-const ADVANCED_LEVEL = /fighter|advanced|intermediate|sparring/i;
-
-function parseClassName(name: string): { title: string; level: string | null } {
-  const match = name.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
-  return match ? { title: match[1], level: match[2] } : { title: name, level: null };
-}
-
-function levelColours(level: string | null) {
-  return level && ADVANCED_LEVEL.test(level)
-    ? { band: COLORS.olive, tint: COLORS.oliveLight }
-    : { band: COLORS.accent, tint: COLORS.peach };
-}
-
-function ClassHeader({ title, band }: { title: string; band: string }) {
+function ClassHeader({ title, band, bandText = COLORS.white }: { title: string; band: string; bandText?: string }) {
   return (
     <View style={[styles.header, { backgroundColor: band }]}>
-      <Text style={styles.className} numberOfLines={2}>{title}</Text>
+      <Text style={[styles.className, { color: bandText }]} numberOfLines={2}>{title}</Text>
     </View>
   );
 }
 
-function LevelFooter({ level, tint }: { level: string | null; tint: string }) {
-  if (!level) return null;
+function LevelFooter({ level, tint }: { level: string; tint: string }) {
   return (
     <View style={[styles.footer, { backgroundColor: tint }]}>
       <Text style={styles.levelText}>{level}</Text>
@@ -77,8 +61,8 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
   const claimMinutesLeft = claimActive
     ? Math.max(1, Math.ceil((CLAIM_WINDOW_MS - (now.getTime() - claimStartedAt!)) / 60000))
     : 0;
-  const { title, level } = parseClassName(session.class_templates.name);
-  const { band, tint } = levelColours(level);
+  const title = session.class_templates.name;
+  const levelStyle = CLASS_LEVELS[session.class_templates.level ?? 'general'];
 
   if (session.is_cancelled) {
     return (
@@ -102,7 +86,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
 
   return (
     <Card style={[styles.card, isPast && styles.pastCard]}>
-      <ClassHeader title={title} band={band} />
+      <ClassHeader title={title} band={levelStyle.band} bandText={levelStyle.bandText} />
       <View style={styles.body}>
       <View style={styles.row}>
         <View style={styles.flex}>
@@ -192,7 +176,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
 
       {isPast && <Text style={styles.pastLabel}>Class has ended</Text>}
       </View>
-      <LevelFooter level={level} tint={tint} />
+      <LevelFooter level={levelStyle.label} tint={levelStyle.tint} />
     </Card>
   );
 }
