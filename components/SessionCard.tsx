@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { COLORS, CANCELLATION_WINDOW_HOURS, CLASS_LEVELS } from '@/constants';
-import { ClassSessionWithDetails } from '@/types';
+import { ClassLevel, ClassSessionWithDetails } from '@/types';
 import { formatGBP } from '@/lib/stripe';
 import { getClassLeaderName } from '@/lib/teacherName';
 import { useDefaultClassLeaderName } from '@/hooks/useDefaultClassLeader';
@@ -24,19 +24,35 @@ const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 // Darker status colours that stay readable on the white card body.
 const ON_WHITE = { success: '#15803D', warning: '#B45309', error: '#DC2626' } as const;
 
-function ClassHeader({ title, band, bandText = COLORS.white }: { title: string; band: string; bandText?: string }) {
+/**
+ * Timetable-style class card: level-coloured header band with the class name,
+ * white body, and a tinted footer naming the level. Shared by the student
+ * SessionCard and the admin home card.
+ */
+export function ClassCardShell({
+  title, level, cancelled = false, style, children,
+}: {
+  title: string;
+  level: ClassLevel | undefined;
+  cancelled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const levelStyle = CLASS_LEVELS[level ?? 'general'];
   return (
-    <View style={[styles.header, { backgroundColor: band }]}>
-      <Text style={[styles.className, { color: bandText }]} numberOfLines={2}>{title}</Text>
-    </View>
-  );
-}
-
-function LevelFooter({ level, tint }: { level: string; tint: string }) {
-  return (
-    <View style={[styles.footer, { backgroundColor: tint }]}>
-      <Text style={styles.levelText}>{level}</Text>
-    </View>
+    <Card style={[styles.card, style]}>
+      <View style={[styles.header, { backgroundColor: cancelled ? COLORS.grey[700] : levelStyle.band }]}>
+        <Text style={[styles.className, { color: cancelled ? COLORS.white : levelStyle.bandText }]} numberOfLines={2}>
+          {title}
+        </Text>
+      </View>
+      <View style={styles.body}>{children}</View>
+      {!cancelled && (
+        <View style={[styles.footer, { backgroundColor: levelStyle.tint }]}>
+          <Text style={styles.levelText}>{levelStyle.label}</Text>
+        </View>
+      )}
+    </Card>
   );
 }
 
@@ -65,13 +81,11 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
     ? Math.max(1, Math.ceil((CLAIM_WINDOW_MS - (now.getTime() - claimStartedAt!)) / 60000))
     : 0;
   const title = session.class_templates.name;
-  const levelStyle = CLASS_LEVELS[session.class_templates.level ?? 'general'];
+  const level = session.class_templates.level;
 
   if (session.is_cancelled) {
     return (
-      <Card style={[styles.card, styles.cancelled]}>
-        <ClassHeader title={title} band={COLORS.grey[700]} />
-        <View style={styles.body}>
+      <ClassCardShell title={title} level={level} cancelled style={styles.cancelled}>
           <View style={styles.row}>
             <View style={styles.flex}>
               <Text style={styles.time}>{timeStr}</Text>
@@ -82,15 +96,12 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
           {session.cancellation_reason ? (
             <Text style={styles.cancellationReason}>{session.cancellation_reason}</Text>
           ) : null}
-        </View>
-      </Card>
+      </ClassCardShell>
     );
   }
 
   return (
-    <Card style={[styles.card, isPast && styles.pastCard]}>
-      <ClassHeader title={title} band={levelStyle.band} bandText={levelStyle.bandText} />
-      <View style={styles.body}>
+    <ClassCardShell title={title} level={level} style={isPast && styles.pastCard}>
       <View style={styles.row}>
         <View style={styles.flex}>
           <Text style={styles.time}>{timeStr}</Text>
@@ -176,9 +187,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
       )}
 
       {isPast && <Text style={styles.pastLabel}>Class has ended</Text>}
-      </View>
-      <LevelFooter level={levelStyle.label} tint={levelStyle.tint} />
-    </Card>
+    </ClassCardShell>
   );
 }
 

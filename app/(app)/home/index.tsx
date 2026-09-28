@@ -18,7 +18,7 @@ import { COLORS } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { SessionCard } from '@/components/SessionCard';
+import { ClassCardShell, SessionCard } from '@/components/SessionCard';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
@@ -415,12 +415,15 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   }
 
   return (
-    <Card style={styles.adminCard}>
+    <ClassCardShell title={session.class_templates?.name} level={session.class_templates?.level}>
+      <View style={styles.adminBody}>
       <View style={styles.adminHeader}>
         <View style={styles.adminInfo}>
-          <Text style={styles.adminClassName}>{session.class_templates?.name}</Text>
+          <Text style={styles.adminTime}>
+            {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
+          </Text>
           <Text style={styles.adminMeta}>
-            {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)} · {formatGBP(session.effective_price)}
+            {dateStr} · {formatGBP(session.effective_price)}
           </Text>
           <Text style={styles.adminTeacher}>{teacherName}</Text>
         </View>
@@ -626,7 +629,8 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           </View>
         </View>
       </SlideUpModal>
-    </Card>
+      </View>
+    </ClassCardShell>
   );
 }
 
@@ -641,17 +645,17 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyText: { color: COLORS.grey[600], fontSize: 15 },
 
-  adminCard: { padding: 14, gap: 12 },
+  adminBody: { gap: 12 },
   adminHeader: { flexDirection: 'row', gap: 8 },
   adminInfo: { flex: 1, gap: 3 },
-  adminClassName: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
-  adminMeta: { color: COLORS.grey[400], fontSize: 13 },
-  adminTeacher: { color: COLORS.grey[400], fontSize: 13 },
+  adminTime: { color: COLORS.black, fontSize: 20, fontWeight: '800' },
+  adminMeta: { color: COLORS.grey[700], fontSize: 13 },
+  adminTeacher: { color: COLORS.grey[700], fontSize: 13 },
   adminStats: { alignItems: 'flex-end' },
-  adminCount: { color: COLORS.white, fontSize: 22, fontWeight: '800' },
+  adminCount: { color: COLORS.black, fontSize: 22, fontWeight: '800' },
   adminCountFull: { color: COLORS.accent },
-  adminStatsLabel: { color: COLORS.grey[400], fontSize: 11 },
-  adminWaitlist: { color: COLORS.grey[400], fontSize: 12, marginTop: 2 },
+  adminStatsLabel: { color: COLORS.grey[700], fontSize: 11 },
+  adminWaitlist: { color: COLORS.grey[700], fontSize: 12, marginTop: 2 },
   adminActions: { flexDirection: 'row', gap: 8 },
 
   modalSheet: {
