@@ -23,6 +23,18 @@ insert into new_timetable values
   ('Pads Class',           6, '11:00', '12:00', 'general'),
   ('Clinch Club',          6, '12:00', '13:00', 'general');
 
+-- class_templates has no unique (day, start, end) constraint; refuse to run if
+-- a slot is already duplicated, since step 1 would rename every copy.
+do $$
+begin
+  if exists (
+    select 1 from class_templates where is_active
+    group by day_of_week, start_time, end_time having count(*) > 1
+  ) then
+    raise exception 'Duplicate active class_templates for one timetable slot — resolve before running';
+  end if;
+end $$;
+
 -- 1. Update templates that already occupy a slot.
 update class_templates ct
 set name = nt.name, level = nt.level, is_active = true

@@ -194,57 +194,19 @@ function TimetableTab() {
       const price = Math.round(parseFloat(editPrice) * 100);
       if (isNaN(price) || price < 0) throw new Error('Price must be 0 or more.');
 
-      const teacherChanged = editTeacher?.id !== editingTemplate.default_teacher?.id;
-
-      const { error } = await supabase
-        .from('class_templates')
-        .update({
-          name: editName.trim(),
-          start_time: editStart,
-          end_time: editEnd,
-          capacity: cap,
-          price,
-          level: editLevel,
-          teacher_id: editTeacher?.id ?? null,
-        })
-        .eq('id', editingTemplate.id);
+      // Server-side so the template and its future sessions update atomically
+      // (leader/time changes skip sessions with per-session overrides).
+      const { error } = await supabase.rpc('update_class_template', {
+        p_template_id: editingTemplate.id,
+        p_name: editName.trim(),
+        p_start_time: editStart,
+        p_end_time: editEnd,
+        p_capacity: cap,
+        p_price: price,
+        p_level: editLevel,
+        p_teacher_id: editTeacher?.id ?? null,
+      });
       if (error) throw error;
-
-      // Propagate the leader change to already-generated future sessions so
-      // existing bookings reflect the new leader. Only touch sessions that
-      // are still inheriting the previous template teacher (or have null) —
-      // sessions with an explicit per-session override (substitute teacher)
-      // must be preserved. New sessions inherit via generate_sessions_ahead.
-      if (teacherChanged) {
-        const today = new Date().toISOString().split('T')[0];
-        const previousTeacherId = editingTemplate.default_teacher?.id ?? null;
-        let query = supabase
-          .from('class_sessions')
-          .update({ teacher_id: editTeacher?.id ?? null })
-          .eq('template_id', editingTemplate.id)
-          .gte('session_date', today);
-        query = previousTeacherId
-          ? query.or(`teacher_id.eq.${previousTeacherId},teacher_id.is.null`)
-          : query.is('teacher_id', null);
-        const { error: sessionError } = await query;
-        if (sessionError) throw sessionError;
-      }
-
-      // Same for time changes: move future sessions still on the old template
-      // times; sessions whose time was overridden individually keep theirs.
-      const prevStart = editingTemplate.start_time.slice(0, 5);
-      const prevEnd = editingTemplate.end_time.slice(0, 5);
-      if (editStart !== prevStart || editEnd !== prevEnd) {
-        const today = new Date().toISOString().split('T')[0];
-        const { error: timeError } = await supabase
-          .from('class_sessions')
-          .update({ start_time: editStart, end_time: editEnd })
-          .eq('template_id', editingTemplate.id)
-          .gte('session_date', today)
-          .eq('start_time', editingTemplate.start_time)
-          .eq('end_time', editingTemplate.end_time);
-        if (timeError) throw timeError;
-      }
     },
     onSuccess: () => {
       invalidateAll();
