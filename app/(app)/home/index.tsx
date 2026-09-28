@@ -18,7 +18,7 @@ import { COLORS } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { ClassCardShell, SessionCard } from '@/components/SessionCard';
+import { ClassCardShell, SessionCard, levelButtonStyle } from '@/components/SessionCard';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
@@ -439,10 +439,10 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
       </View>
 
       <View style={styles.adminActions}>
-        <Button variant="secondary" size="sm" onPress={() => setShowRoster(true)}>
+        <Button variant="primary" size="sm" onPress={() => setShowRoster(true)} style={levelButtonStyle(session.class_templates?.level)}>
           Roster
         </Button>
-        <Button variant="secondary" size="sm" onPress={() => setShowTimeEditor(true)}>
+        <Button variant="primary" size="sm" onPress={() => setShowTimeEditor(true)} style={levelButtonStyle(session.class_templates?.level)}>
           Edit Time
         </Button>
         <Button

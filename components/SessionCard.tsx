@@ -24,10 +24,15 @@ const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 // Darker status colours that stay readable on the white card body.
 const ON_WHITE = { success: '#15803D', warning: '#B45309', error: '#DC2626' } as const;
 
+/** Button style that fills a primary button with the class level's colour. */
+export function levelButtonStyle(level: ClassLevel | undefined): ViewStyle {
+  return { backgroundColor: CLASS_LEVELS[level ?? 'general'].band };
+}
+
 /**
- * Timetable-style class card: level-coloured header band with the class name,
- * white body, and a tinted footer naming the level. Shared by the student
- * SessionCard and the admin home card.
+ * Timetable-style class card: white body under a level-coloured top line,
+ * with a tinted footer naming the level. Shared by the student SessionCard
+ * and the admin home card.
  */
 export function ClassCardShell({
   title, level, cancelled = false, style, children,
@@ -40,13 +45,11 @@ export function ClassCardShell({
 }) {
   const levelStyle = CLASS_LEVELS[level ?? 'general'];
   return (
-    <Card style={[styles.card, style]}>
-      <View style={[styles.header, { backgroundColor: cancelled ? COLORS.grey[700] : levelStyle.band }]}>
-        <Text style={[styles.className, { color: cancelled ? COLORS.white : levelStyle.bandText }]} numberOfLines={2}>
-          {title}
-        </Text>
+    <Card style={[styles.card, { borderTopColor: cancelled ? COLORS.grey[700] : levelStyle.band }, style]}>
+      <View style={styles.body}>
+        <Text style={styles.className} numberOfLines={2}>{title}</Text>
+        {children}
       </View>
-      <View style={styles.body}>{children}</View>
       {!cancelled && (
         <View style={[styles.footer, { backgroundColor: levelStyle.tint }]}>
           <Text style={styles.levelText}>{levelStyle.label}</Text>
@@ -126,6 +129,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
               size="sm"
               onPress={onBook}
               loading={isMutating}
+              style={isFull ? undefined : levelButtonStyle(level)}
             >
               {isFull ? 'Join Waitlist' : 'Book'}
             </Button>
@@ -176,7 +180,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
             Claim within {claimMinutesLeft} min or it rolls to the next person.
           </Text>
           <View style={styles.claimActions}>
-            <Button variant="primary" size="sm" onPress={onClaim} loading={isMutating}>
+            <Button variant="primary" size="sm" onPress={onClaim} loading={isMutating} style={levelButtonStyle(level)}>
               Claim my spot
             </Button>
             <Button variant="secondary" size="sm" onPress={onCancel} loading={isMutating}>
@@ -201,12 +205,11 @@ const styles = StyleSheet.create({
   cancelled: { opacity: 0.6 },
   pastCard: { opacity: 0.5 },
 
-  card: { padding: 0, overflow: 'hidden', borderWidth: 0, borderTopWidth: 0 },
-  header: { paddingVertical: 10, paddingHorizontal: 16 },
+  card: { padding: 0, overflow: 'hidden', borderWidth: 0, borderTopWidth: 6 },
   body: { padding: 16, backgroundColor: COLORS.white },
   footer: { paddingVertical: 6, alignItems: 'center' },
   levelText: { color: COLORS.black, fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
-  className: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  className: { color: COLORS.black, fontSize: 15, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4 },
   time: { color: COLORS.black, fontSize: 20, fontWeight: '800', marginBottom: 2 },
   meta: { color: COLORS.grey[700], fontSize: 13, marginBottom: 2 },
   price: { color: COLORS.grey[700], fontSize: 13 },
