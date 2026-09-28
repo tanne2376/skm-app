@@ -50,6 +50,8 @@ export interface Location {
   created_at: string;
 }
 
+export type ClassLevel = 'beginners' | 'fighters' | 'general' | 'kids';
+
 export interface ClassTemplate {
   id: string;
   name: string;
@@ -59,6 +61,7 @@ export interface ClassTemplate {
   capacity: number;
   price: number;       // pence
   teacher_id: string | null;
+  level: ClassLevel;
   is_active: boolean;
   created_at: string;
 }

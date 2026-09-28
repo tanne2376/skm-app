@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 36, height: 4, backgroundColor: COLORS.grey[700], borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   sheetTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 12 },
   sheetItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.grey[800] },
-  sheetItemSelected: { backgroundColor: 'rgba(239,68,68,0.1)', marginHorizontal: -20, paddingHorizontal: 20 },
+  sheetItemSelected: { backgroundColor: COLORS.accentTint, marginHorizontal: -20, paddingHorizontal: 20 },
   sheetItemLabel: { color: COLORS.white, fontSize: 15 },
   sheetItemLabelSelected: { color: COLORS.accent, fontWeight: '700' },
   sheetItemSub: { color: COLORS.grey[400], fontSize: 13, marginTop: 2 },

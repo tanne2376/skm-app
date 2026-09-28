@@ -18,7 +18,7 @@ import { COLORS } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { SessionCard } from '@/components/SessionCard';
+import { ClassCardShell, SessionCard } from '@/components/SessionCard';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
@@ -217,21 +217,29 @@ export default function HomeScreen() {
             colors={[COLORS.accent]}
           />
         }
-        renderItem={({ item }) =>
-          isAdmin ? (
-            <AdminSessionCard session={item} />
-          ) : (
-            <SessionCard
-              session={item}
-              onBook={() => requireAuth(() => handleBookPress(item))}
-              onCancel={() => requireAuth(() => handleCancel(item))}
-              onClaim={() => requireAuth(() => handleClaim(item))}
-              isMutating={isMutating}
-              freeWithMembership={canUseMembership}
-              isBlockedFromBooking={isBlockedFromBooking}
-            />
-          )
-        }
+        renderItem={({ item, index }) => (
+          <>
+            {/* Day heading above the first class of each day */}
+            {(index === 0 || sessions?.[index - 1]?.session_date !== item.session_date) && (
+              <Text style={[styles.dayHeading, index > 0 && styles.dayHeadingSpaced]}>
+                {new Date(item.session_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' })}
+              </Text>
+            )}
+            {isAdmin ? (
+              <AdminSessionCard session={item} />
+            ) : (
+              <SessionCard
+                session={item}
+                onBook={() => requireAuth(() => handleBookPress(item))}
+                onCancel={() => requireAuth(() => handleCancel(item))}
+                onClaim={() => requireAuth(() => handleClaim(item))}
+                isMutating={isMutating}
+                freeWithMembership={canUseMembership}
+                isBlockedFromBooking={isBlockedFromBooking}
+              />
+            )}
+          </>
+        )}
         ListEmptyComponent={
           !isLoading ? (
             <View style={styles.empty}>
@@ -407,14 +415,20 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   }
 
   return (
-    <Card style={styles.adminCard}>
+    <ClassCardShell title={session.class_templates?.name} level={session.class_templates?.level} showTitle={false}>
+      <View style={styles.adminBody}>
       <View style={styles.adminHeader}>
         <View style={styles.adminInfo}>
-          <Text style={styles.adminClassName}>{session.class_templates?.name}</Text>
+          {/* Date lives in the day heading above, so keep this compact */}
+          <View style={styles.adminTitleRow}>
+            <Text style={styles.adminClassName} numberOfLines={1}>{session.class_templates?.name}</Text>
+            <Text style={styles.adminTime}>
+              {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
+            </Text>
+          </View>
           <Text style={styles.adminMeta}>
-            {dateStr} · {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)} · {formatGBP(session.effective_price)}
+            {teacherName} · {formatGBP(session.effective_price)}
           </Text>
-          <Text style={styles.adminTeacher}>{teacherName}</Text>
         </View>
         <View style={styles.adminStats}>
           <Text style={[styles.adminCount, isFull && styles.adminCountFull]}>
@@ -618,7 +632,8 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           </View>
         </View>
       </SlideUpModal>
-    </Card>
+      </View>
+    </ClassCardShell>
   );
 }
 
@@ -628,20 +643,23 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.black },
   list: { padding: 16, paddingTop: 12 },
   separator: { height: 12 },
+  dayHeading: { color: COLORS.white, fontSize: 20, fontWeight: '800', marginBottom: 10 },
+  dayHeadingSpaced: { marginTop: 12 },
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyText: { color: COLORS.grey[600], fontSize: 15 },
 
-  adminCard: { padding: 14, gap: 12 },
-  adminHeader: { flexDirection: 'row', gap: 8 },
+  adminBody: { gap: 12 },
+  adminHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   adminInfo: { flex: 1, gap: 3 },
-  adminClassName: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
-  adminMeta: { color: COLORS.grey[400], fontSize: 13 },
-  adminTeacher: { color: COLORS.grey[400], fontSize: 13 },
+  adminTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  adminClassName: { color: COLORS.black, fontSize: 15, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', flexShrink: 1 },
+  adminTime: { color: COLORS.black, fontSize: 15, fontWeight: '600' },
+  adminMeta: { color: COLORS.grey[700], fontSize: 13 },
   adminStats: { alignItems: 'flex-end' },
-  adminCount: { color: COLORS.white, fontSize: 22, fontWeight: '800' },
+  adminCount: { color: COLORS.black, fontSize: 22, fontWeight: '800' },
   adminCountFull: { color: COLORS.accent },
-  adminStatsLabel: { color: COLORS.grey[400], fontSize: 11 },
-  adminWaitlist: { color: COLORS.grey[400], fontSize: 12, marginTop: 2 },
+  adminStatsLabel: { color: COLORS.grey[700], fontSize: 11 },
+  adminWaitlist: { color: COLORS.grey[700], fontSize: 12, marginTop: 2 },
   adminActions: { flexDirection: 'row', gap: 8 },
 
   modalSheet: {

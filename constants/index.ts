@@ -1,7 +1,13 @@
+// Palette sampled from the Scrapyard timetable: charcoal headers, orange and
+// olive class blocks, with peach / pale-olive tints.
 export const COLORS = {
-  black: '#0A0A0A',
+  black: '#2B2B2B',     // app background — dark charcoal
   white: '#FFFFFF',
-  accent: '#C8102E',
+  accent: '#F26000',    // Scrapyard orange
+  accentTint: 'rgba(242,96,0,0.12)',
+  olive: '#6B6B38',
+  oliveLight: '#BEC498',
+  peach: '#FEC8A6',
   success: '#22C55E',
   warning: '#F59E0B',
   error: '#EF4444',
@@ -9,14 +15,25 @@ export const COLORS = {
     50: '#F9F9F9',
     100: '#F0F0F0',
     200: '#E0E0E0',
-    300: '#BDBDBD',
-    400: '#9E9E9E',
-    600: '#5E5E5E',
-    700: '#424242',
-    800: '#2E2E2E',
-    900: '#1A1A1A',
+    300: '#D4D4D8',
+    400: '#B0B0B0',
+    500: '#9A9A9A',
+    600: '#8A8A8A',
+    700: '#5A5A5A',
+    800: '#3A3A3A',
+    900: '#1C1C1C',     // cards / tab bar — sit darker than the charcoal background
   },
 } as const;
+
+// Timetable colours per class level: header band, header text, footer tint.
+export const CLASS_LEVELS = {
+  beginners: { label: 'Beginners', band: COLORS.accent, bandText: COLORS.white, tint: COLORS.peach },
+  fighters:  { label: 'Fighters',  band: COLORS.olive, bandText: COLORS.white, tint: COLORS.oliveLight },
+  general:   { label: 'General',   band: '#7A7A7A', bandText: COLORS.white, tint: COLORS.grey[300] },
+  kids:      { label: 'Kids',      band: COLORS.black, bandText: COLORS.white, tint: COLORS.peach },
+} as const;
+
+export const CLASS_LEVEL_ORDER = ['beginners', 'fighters', 'general', 'kids'] as const;
 
 export const CANCELLATION_WINDOW_HOURS = 3;
 export const SESSION_GENERATION_WEEKS_AHEAD = 4;

@@ -6,19 +6,39 @@ import {
 import { SlideUpModal } from '@/components/ui/SlideUpModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, DAY_NAMES } from '@/constants';
+import { COLORS, DAY_NAMES, CLASS_LEVELS, CLASS_LEVEL_ORDER } from '@/constants';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
 import { formatGBP } from '@/lib/stripe';
-import { ClassTemplate, Profile } from '@/types';
+import { ClassLevel, ClassTemplate, Profile } from '@/types';
 
 type ManageTab = 'timetable' | 'users';
 
 interface TemplateWithTeacher extends ClassTemplate {
   default_teacher?: Pick<Profile, 'id' | 'full_name'> | null;
+}
+
+function LevelPicker({ value, onChange }: { value: ClassLevel; onChange: (level: ClassLevel) => void }) {
+  return (
+    <View style={styles.levelRow}>
+      {CLASS_LEVEL_ORDER.map((level) => {
+        const active = value === level;
+        const { label, band, bandText } = CLASS_LEVELS[level];
+        return (
+          <TouchableOpacity
+            key={level}
+            style={[styles.levelChip, active && { backgroundColor: band, borderColor: band }]}
+            onPress={() => onChange(level)}
+          >
+            <Text style={[styles.levelChipText, active && { color: bandText }]}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 }
 
 interface UserWithLateCancellations {
@@ -120,6 +140,7 @@ function TimetableTab() {
   const [editTeacher, setEditTeacher] = useState<Pick<Profile, 'id' | 'full_name'> | null>(null);
   const [editCapacity, setEditCapacity] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editLevel, setEditLevel] = useState<ClassLevel>('general');
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -128,6 +149,7 @@ function TimetableTab() {
   const [newEnd, setNewEnd] = useState('');
   const [newCapacity, setNewCapacity] = useState('20');
   const [newPrice, setNewPrice] = useState('15.00');
+  const [newLevel, setNewLevel] = useState<ClassLevel>('general');
 
   const { data: templates, isLoading, refetch } = useQuery<TemplateWithTeacher[]>({
     queryKey: ['class_templates_with_teachers'],
@@ -158,6 +180,7 @@ function TimetableTab() {
     setEditTeacher(template.default_teacher ?? null);
     setEditCapacity(String(template.capacity));
     setEditPrice((template.price / 100).toFixed(2));
+    setEditLevel(template.level);
     setEditingTemplate(template);
   }
 
@@ -166,45 +189,25 @@ function TimetableTab() {
       if (!editingTemplate) return;
       if (!editName.trim()) throw new Error('Name cannot be empty.');
       if (!editStart.match(/^\d{2}:\d{2}$/) || !editEnd.match(/^\d{2}:\d{2}$/)) throw new Error('Times must be HH:MM.');
+      if (editEnd <= editStart) throw new Error('End time must be after start time.');
       const cap = parseInt(editCapacity, 10);
       if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
       const price = Math.round(parseFloat(editPrice) * 100);
       if (isNaN(price) || price < 0) throw new Error('Price must be 0 or more.');
 
-      const teacherChanged = editTeacher?.id !== editingTemplate.default_teacher?.id;
-
-      const { error } = await supabase
-        .from('class_templates')
-        .update({
-          name: editName.trim(),
-          start_time: editStart,
-          end_time: editEnd,
-          capacity: cap,
-          price,
-          teacher_id: editTeacher?.id ?? null,
-        })
-        .eq('id', editingTemplate.id);
+      // Server-side so the template and its future sessions update atomically
+      // (leader/time changes skip sessions with per-session overrides).
+      const { error } = await supabase.rpc('update_class_template', {
+        p_template_id: editingTemplate.id,
+        p_name: editName.trim(),
+        p_start_time: editStart,
+        p_end_time: editEnd,
+        p_capacity: cap,
+        p_price: price,
+        p_level: editLevel,
+        p_teacher_id: editTeacher?.id ?? null,
+      });
       if (error) throw error;
-
-      // Propagate the leader change to already-generated future sessions so
-      // existing bookings reflect the new leader. Only touch sessions that
-      // are still inheriting the previous template teacher (or have null) —
-      // sessions with an explicit per-session override (substitute teacher)
-      // must be preserved. New sessions inherit via generate_sessions_ahead.
-      if (teacherChanged) {
-        const today = new Date().toISOString().split('T')[0];
-        const previousTeacherId = editingTemplate.default_teacher?.id ?? null;
-        let query = supabase
-          .from('class_sessions')
-          .update({ teacher_id: editTeacher?.id ?? null })
-          .eq('template_id', editingTemplate.id)
-          .gte('session_date', today);
-        query = previousTeacherId
-          ? query.or(`teacher_id.eq.${previousTeacherId},teacher_id.is.null`)
-          : query.is('teacher_id', null);
-        const { error: sessionError } = await query;
-        if (sessionError) throw sessionError;
-      }
     },
     onSuccess: () => {
       invalidateAll();
@@ -234,6 +237,7 @@ function TimetableTab() {
     mutationFn: async () => {
       if (!newName.trim()) throw new Error('Name is required.');
       if (!newStart.match(/^\d{2}:\d{2}$/) || !newEnd.match(/^\d{2}:\d{2}$/)) throw new Error('Times must be HH:MM.');
+      if (newEnd <= newStart) throw new Error('End time must be after start time.');
       const cap = parseInt(newCapacity, 10);
       const price = Math.round(parseFloat(newPrice) * 100);
       if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
@@ -246,13 +250,14 @@ function TimetableTab() {
         end_time: newEnd,
         capacity: cap,
         price,
+        level: newLevel,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       invalidateAll();
       setShowAddClass(false);
-      setNewName(''); setNewStart(''); setNewEnd(''); setNewCapacity('20'); setNewPrice('15.00');
+      setNewName(''); setNewStart(''); setNewEnd(''); setNewCapacity('20'); setNewPrice('15.00'); setNewLevel('general');
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
@@ -321,8 +326,13 @@ function TimetableTab() {
             <Text style={styles.dayHeading}>{DAY_NAMES[day]}</Text>
             {byDay[day].map((template) => (
               <TouchableOpacity key={template.id} onPress={() => openEdit(template)} activeOpacity={0.7}>
-                <Card style={styles.card}>
-                  <Text style={styles.cardName}>{template.name}</Text>
+                <Card style={[styles.card, { borderTopColor: CLASS_LEVELS[template.level].band }]}>
+                  <View style={styles.cardTitleRow}>
+                    <Text style={styles.cardName}>{template.name}</Text>
+                    <Text style={[styles.cardLevel, { color: CLASS_LEVELS[template.level].tint }]}>
+                      {CLASS_LEVELS[template.level].label}
+                    </Text>
+                  </View>
                   <Text style={styles.cardMeta}>
                     {template.start_time.slice(0, 5)}–{template.end_time.slice(0, 5)} · Cap {template.capacity} · £{(template.price / 100).toFixed(2)}
                   </Text>
@@ -349,6 +359,9 @@ function TimetableTab() {
 
             <Text style={styles.fieldLabel}>Name</Text>
             <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholderTextColor={COLORS.grey[600]} />
+
+            <Text style={styles.fieldLabel}>Level</Text>
+            <LevelPicker value={editLevel} onChange={setEditLevel} />
 
             <View style={styles.timeRow}>
               <View style={{ flex: 1 }}>
@@ -433,6 +446,9 @@ function TimetableTab() {
 
           <Text style={styles.fieldLabel}>Name</Text>
           <TextInput style={styles.input} value={newName} onChangeText={setNewName} placeholder="e.g. Kickboxing" placeholderTextColor={COLORS.grey[600]} />
+
+          <Text style={styles.fieldLabel}>Level</Text>
+          <LevelPicker value={newLevel} onChange={setNewLevel} />
 
           <Text style={styles.fieldLabel}>Day</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
@@ -915,7 +931,9 @@ const styles = StyleSheet.create({
   dayHeading: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
 
   card: { padding: 14 },
-  cardName: { color: COLORS.white, fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  cardName: { color: COLORS.white, fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  cardLevel: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
   cardMeta: { color: COLORS.grey[400], fontSize: 13 },
   cardLeader: { color: COLORS.grey[600], fontSize: 12, marginTop: 2 },
 
@@ -947,6 +965,9 @@ const styles = StyleSheet.create({
   pickerRole: { color: COLORS.grey[400], fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   pickerRoleStudent: { color: COLORS.warning },
 
+  levelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  levelChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.grey[700], backgroundColor: COLORS.grey[800] },
+  levelChipText: { color: COLORS.grey[400], fontSize: 13, fontWeight: '700' },
   dayChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: COLORS.grey[800], marginRight: 8 },
   dayChipActive: { backgroundColor: COLORS.accent },
   dayChipText: { color: COLORS.grey[400], fontSize: 13, fontWeight: '600' },

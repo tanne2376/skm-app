@@ -62,6 +62,7 @@ All users, teachers, and admins are in the **UK timezone**. Do not add UTC-conve
 ## Database conventions
 - **day_of_week** uses ISODOW: 1 = Monday, 7 = Sunday (never DOW/Sunday=0)
 - **Prices** are always in **pence** (integer): £15.00 → 1500
+- **class_templates.level** (`class_level` enum): `beginners` / `fighters` / `general` / `kids` — drives timetable colours (`CLASS_LEVELS` in `constants/index.ts`); `kids` marks classes covered by the kids membership
 - All timestamps are `timestamptz` stored in UTC
 - `generate_sessions_ahead(4)` must be called weekly (Monday cron) to create session rows
 
