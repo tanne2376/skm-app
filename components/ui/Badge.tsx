@@ -78,10 +78,10 @@ const styles = StyleSheet.create({
   warning: { backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)' },
   error: { backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
   neutral: { backgroundColor: COLORS.grey[800], borderWidth: 1, borderColor: COLORS.grey[700] },
-  info: { backgroundColor: 'rgba(59,130,246,0.15)', borderWidth: 1, borderColor: 'rgba(59,130,246,0.3)' },
+  info: { backgroundColor: 'rgba(190,196,152,0.15)', borderWidth: 1, borderColor: 'rgba(190,196,152,0.35)' },
   text_success: { color: COLORS.success },
   text_warning: { color: COLORS.warning },
   text_error: { color: COLORS.error },
   text_neutral: { color: COLORS.grey[400] },
-  text_info: { color: '#60A5FA' },
+  text_info: { color: COLORS.oliveLight },
 });

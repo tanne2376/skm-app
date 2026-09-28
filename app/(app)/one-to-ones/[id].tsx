@@ -416,10 +416,10 @@ const styles = StyleSheet.create({
   confirmedSub: { color: COLORS.grey[300], fontSize: 13 },
 
   studentBanner: {
-    backgroundColor: 'rgba(59,130,246,0.12)', borderWidth: 1, borderColor: 'rgba(59,130,246,0.3)',
+    backgroundColor: 'rgba(190,196,152,0.12)', borderWidth: 1, borderColor: 'rgba(190,196,152,0.35)',
     borderRadius: 12, padding: 16, gap: 2,
   },
-  studentBannerLabel: { color: '#60A5FA', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  studentBannerLabel: { color: COLORS.oliveLight, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
   studentBannerName: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
 
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },

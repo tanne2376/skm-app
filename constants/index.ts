@@ -1,7 +1,13 @@
+// Palette sampled from the Scrapyard timetable: charcoal headers, orange and
+// olive class blocks, with peach / pale-olive tints.
 export const COLORS = {
-  black: '#0A0A0A',
+  black: '#2B2B2B',     // app background — dark charcoal
   white: '#FFFFFF',
-  accent: '#C8102E',
+  accent: '#F26000',    // Scrapyard orange
+  accentTint: 'rgba(242,96,0,0.12)',
+  olive: '#6B6B38',
+  oliveLight: '#BEC498',
+  peach: '#FEC8A6',
   success: '#22C55E',
   warning: '#F59E0B',
   error: '#EF4444',
@@ -9,12 +15,13 @@ export const COLORS = {
     50: '#F9F9F9',
     100: '#F0F0F0',
     200: '#E0E0E0',
-    300: '#BDBDBD',
-    400: '#9E9E9E',
-    600: '#5E5E5E',
-    700: '#424242',
-    800: '#2E2E2E',
-    900: '#1A1A1A',
+    300: '#D4D4D8',
+    400: '#B0B0B0',
+    500: '#9A9A9A',
+    600: '#8A8A8A',
+    700: '#5A5A5A',
+    800: '#474747',
+    900: '#383838',     // cards / tab bar — timetable header charcoal
   },
 } as const;
 
