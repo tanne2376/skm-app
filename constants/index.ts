@@ -20,8 +20,8 @@ export const COLORS = {
     500: '#9A9A9A',
     600: '#8A8A8A',
     700: '#5A5A5A',
-    800: '#474747',
-    900: '#383838',     // cards / tab bar — timetable header charcoal
+    800: '#3A3A3A',
+    900: '#1C1C1C',     // cards / tab bar — sit darker than the charcoal background
   },
 } as const;
 

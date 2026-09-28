@@ -48,7 +48,8 @@ describe('SessionCard', () => {
 
   it('renders class name and time', () => {
     render(<SessionCard session={base} onBook={noop} onCancel={noop} onClaim={noop} />);
-    expect(screen.getByText('Muay Thai (Beginners)')).toBeTruthy();
+    expect(screen.getByText('Muay Thai')).toBeTruthy();
+    expect(screen.getByText('Beginners')).toBeTruthy();
     expect(screen.getByText(/18:30/)).toBeTruthy();
   });
 

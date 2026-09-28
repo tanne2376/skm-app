@@ -21,6 +21,38 @@ interface SessionCardProps {
 
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 
+// Timetable-style colouring: "Muay Thai (Fighters)" → title "Muay Thai",
+// level "Fighters". Fighter/advanced classes are olive, everything else orange.
+const ADVANCED_LEVEL = /fighter|advanced|intermediate|sparring/i;
+
+function parseClassName(name: string): { title: string; level: string | null } {
+  const match = name.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  return match ? { title: match[1], level: match[2] } : { title: name, level: null };
+}
+
+function levelColours(level: string | null) {
+  return level && ADVANCED_LEVEL.test(level)
+    ? { band: COLORS.olive, tint: COLORS.oliveLight }
+    : { band: COLORS.accent, tint: COLORS.peach };
+}
+
+function ClassHeader({ title, band }: { title: string; band: string }) {
+  return (
+    <View style={[styles.header, { backgroundColor: band }]}>
+      <Text style={styles.className} numberOfLines={2}>{title}</Text>
+    </View>
+  );
+}
+
+function LevelFooter({ level, tint }: { level: string | null; tint: string }) {
+  if (!level) return null;
+  return (
+    <View style={[styles.footer, { backgroundColor: tint }]}>
+      <Text style={styles.levelText}>{level}</Text>
+    </View>
+  );
+}
+
 export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false }: SessionCardProps) {
   const { data: defaultLeaderName } = useDefaultClassLeaderName();
   const now = new Date();
@@ -37,30 +69,37 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
     weekday: 'short', day: 'numeric', month: 'short',
   });
   const teacherName = getClassLeaderName(session, defaultLeaderName);
+  const { title, level } = parseClassName(session.class_templates.name);
+  const { band, tint } = levelColours(level);
 
   if (session.is_cancelled) {
     return (
-      <Card style={styles.cancelled}>
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <Text style={styles.className}>{session.class_templates.name}</Text>
-            <Text style={styles.meta}>{dateStr} · {timeStr} · {teacherName}</Text>
+      <Card style={[styles.card, styles.cancelled]}>
+        <ClassHeader title={title} band={COLORS.grey[700]} />
+        <View style={styles.body}>
+          <View style={styles.row}>
+            <View style={styles.flex}>
+              <Text style={styles.time}>{timeStr}</Text>
+              <Text style={styles.meta}>{dateStr} · {teacherName}</Text>
+            </View>
+            <Badge label="Cancelled" variant="error" />
           </View>
-          <Badge label="Cancelled" variant="error" />
+          {session.cancellation_reason ? (
+            <Text style={styles.cancellationReason}>{session.cancellation_reason}</Text>
+          ) : null}
         </View>
-        {session.cancellation_reason ? (
-          <Text style={styles.cancellationReason}>{session.cancellation_reason}</Text>
-        ) : null}
       </Card>
     );
   }
 
   return (
-    <Card style={isPast ? styles.pastCard : undefined}>
+    <Card style={[styles.card, isPast && styles.pastCard]}>
+      <ClassHeader title={title} band={band} />
+      <View style={styles.body}>
       <View style={styles.row}>
         <View style={styles.flex}>
-          <Text style={styles.className}>{session.class_templates.name}</Text>
-          <Text style={styles.meta}>{dateStr} · {timeStr} · {teacherName}</Text>
+          <Text style={styles.time}>{timeStr}</Text>
+          <Text style={styles.meta}>{dateStr} · {teacherName}</Text>
           <Text style={[styles.price, freeWithMembership && styles.priceFree]}>
             {freeWithMembership ? 'Free with membership' : formatGBP(session.effective_price)}
           </Text>
@@ -211,6 +250,8 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
       )}
 
       {isPast && <Text style={styles.pastLabel}>Class has ended</Text>}
+      </View>
+      <LevelFooter level={level} tint={tint} />
     </Card>
   );
 }
@@ -227,7 +268,13 @@ const styles = StyleSheet.create({
   cancelled: { opacity: 0.6 },
   pastCard: { opacity: 0.5 },
 
-  className: { color: COLORS.white, fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  card: { padding: 0, overflow: 'hidden', borderWidth: 0, borderTopWidth: 0 },
+  header: { paddingVertical: 10, paddingHorizontal: 16 },
+  body: { padding: 16 },
+  footer: { paddingVertical: 6, alignItems: 'center' },
+  levelText: { color: COLORS.black, fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  className: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  time: { color: COLORS.white, fontSize: 20, fontWeight: '800', marginBottom: 2 },
   meta: { color: COLORS.grey[400], fontSize: 13, marginBottom: 2 },
   price: { color: COLORS.grey[400], fontSize: 13 },
   priceFree: { color: COLORS.success },
