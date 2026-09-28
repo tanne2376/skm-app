@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { COLORS, CANCELLATION_WINDOW_HOURS, CLASS_LEVELS } from '@/constants';
 import { ClassLevel, ClassSessionWithDetails } from '@/types';
@@ -52,11 +53,9 @@ export function ClassCardShell({
         {showTitle && <Text style={styles.className} numberOfLines={2}>{title}</Text>}
         {children}
       </View>
-      {!cancelled && (
-        <View style={[styles.footer, { backgroundColor: levelStyle.tint }]}>
-          <Text style={styles.levelText}>{levelStyle.label}</Text>
-        </View>
-      )}
+      <View style={[styles.footer, { backgroundColor: levelStyle.tint }]}>
+        <Text style={styles.levelText}>{levelStyle.label}</Text>
+      </View>
     </Card>
   );
 }
@@ -85,6 +84,16 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
   const claimMinutesLeft = claimActive
     ? Math.max(1, Math.ceil((CLAIM_WINDOW_MS - (now.getTime() - claimStartedAt!)) / 60000))
     : 0;
+
+  // Re-render while a claim window is open so the countdown ticks down and the
+  // claim box disappears when the window expires.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!claimActive) return;
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [claimActive]);
+
   const title = session.class_templates.name;
   const level = session.class_templates.level;
 
