@@ -217,21 +217,29 @@ export default function HomeScreen() {
             colors={[COLORS.accent]}
           />
         }
-        renderItem={({ item }) =>
-          isAdmin ? (
-            <AdminSessionCard session={item} />
-          ) : (
-            <SessionCard
-              session={item}
-              onBook={() => requireAuth(() => handleBookPress(item))}
-              onCancel={() => requireAuth(() => handleCancel(item))}
-              onClaim={() => requireAuth(() => handleClaim(item))}
-              isMutating={isMutating}
-              freeWithMembership={canUseMembership}
-              isBlockedFromBooking={isBlockedFromBooking}
-            />
-          )
-        }
+        renderItem={({ item, index }) => (
+          <>
+            {/* Day heading above the first class of each day */}
+            {(index === 0 || sessions?.[index - 1]?.session_date !== item.session_date) && (
+              <Text style={[styles.dayHeading, index > 0 && styles.dayHeadingSpaced]}>
+                {new Date(item.session_date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' })}
+              </Text>
+            )}
+            {isAdmin ? (
+              <AdminSessionCard session={item} />
+            ) : (
+              <SessionCard
+                session={item}
+                onBook={() => requireAuth(() => handleBookPress(item))}
+                onCancel={() => requireAuth(() => handleCancel(item))}
+                onClaim={() => requireAuth(() => handleClaim(item))}
+                isMutating={isMutating}
+                freeWithMembership={canUseMembership}
+                isBlockedFromBooking={isBlockedFromBooking}
+              />
+            )}
+          </>
+        )}
         ListEmptyComponent={
           !isLoading ? (
             <View style={styles.empty}>
@@ -628,6 +636,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.black },
   list: { padding: 16, paddingTop: 12 },
   separator: { height: 12 },
+  dayHeading: { color: COLORS.white, fontSize: 20, fontWeight: '800', marginBottom: 10 },
+  dayHeadingSpaced: { marginTop: 12 },
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyText: { color: COLORS.grey[600], fontSize: 15 },
 
