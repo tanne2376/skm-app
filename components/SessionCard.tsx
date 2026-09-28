@@ -21,6 +21,9 @@ interface SessionCardProps {
 
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
 
+// Darker status colours that stay readable on the white card body.
+const ON_WHITE = { success: '#15803D', warning: '#B45309', error: '#DC2626' } as const;
+
 function ClassHeader({ title, band, bandText = COLORS.white }: { title: string; band: string; bandText?: string }) {
   return (
     <View style={[styles.header, { backgroundColor: band }]}>
@@ -118,22 +121,20 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
           )}
           {!isPast && userBooking?.status === 'confirmed' && (
             <Button
-              variant={withinCancellationWindow ? 'danger' : 'ghost'}
+              variant={withinCancellationWindow ? 'danger' : 'secondary'}
               size="sm"
               onPress={onCancel}
               loading={isMutating}
-              style={styles.compactButton}
             >
               {withinCancellationWindow ? 'Cancel (No Refund)' : 'Cancel Booking'}
             </Button>
           )}
           {!isPast && userBooking?.status === 'waitlisted' && !claimActive && (
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
               onPress={onCancel}
               loading={isMutating}
-              style={styles.compactButton}
             >
               Leave Waitlist
             </Button>
@@ -167,7 +168,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
             <Button variant="primary" size="sm" onPress={onClaim} loading={isMutating}>
               Claim my spot
             </Button>
-            <Button variant="ghost" size="sm" onPress={onCancel} loading={isMutating}>
+            <Button variant="secondary" size="sm" onPress={onCancel} loading={isMutating}>
               Leave Waitlist
             </Button>
           </View>
@@ -186,7 +187,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   rightColumn: { alignItems: 'flex-end', justifyContent: 'center', gap: 6, alignSelf: 'center' },
   notice: { marginTop: 10 },
-  compactButton: { paddingHorizontal: 0 },
   claimActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
   cancelled: { opacity: 0.6 },
@@ -194,17 +194,17 @@ const styles = StyleSheet.create({
 
   card: { padding: 0, overflow: 'hidden', borderWidth: 0, borderTopWidth: 0 },
   header: { paddingVertical: 10, paddingHorizontal: 16 },
-  body: { padding: 16 },
+  body: { padding: 16, backgroundColor: COLORS.white },
   footer: { paddingVertical: 6, alignItems: 'center' },
   levelText: { color: COLORS.black, fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
   className: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
-  time: { color: COLORS.white, fontSize: 20, fontWeight: '800', marginBottom: 2 },
-  meta: { color: COLORS.grey[400], fontSize: 13, marginBottom: 2 },
-  price: { color: COLORS.grey[400], fontSize: 13 },
-  priceFree: { color: COLORS.success },
-  spots: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  time: { color: COLORS.black, fontSize: 20, fontWeight: '800', marginBottom: 2 },
+  meta: { color: COLORS.grey[700], fontSize: 13, marginBottom: 2 },
+  price: { color: COLORS.grey[700], fontSize: 13 },
+  priceFree: { color: ON_WHITE.success, fontWeight: '600' },
+  spots: { color: COLORS.black, fontSize: 13, fontWeight: '700' },
   spotsFull: { color: COLORS.accent },
-  waitlistPosition: { color: COLORS.warning, fontSize: 13 },
+  waitlistPosition: { color: ON_WHITE.warning, fontWeight: '600', fontSize: 13 },
   claimBox: {
     backgroundColor: 'rgba(34,197,94,0.1)',
     borderRadius: 10,
@@ -213,10 +213,10 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  claimTitle: { color: COLORS.success, fontSize: 14, fontWeight: '700' },
-  claimSub: { color: COLORS.grey[300], fontSize: 12 },
-  noRefundWarning: { color: COLORS.warning, fontSize: 12 },
-  blockedWarning: { color: COLORS.error, fontSize: 12, fontWeight: '600' },
-  pastLabel: { color: COLORS.grey[600], fontSize: 12, marginTop: 8 },
-  cancellationReason: { color: COLORS.grey[400], fontSize: 13, marginTop: 8, fontStyle: 'italic' },
+  claimTitle: { color: ON_WHITE.success, fontSize: 14, fontWeight: '700' },
+  claimSub: { color: COLORS.grey[700], fontSize: 12 },
+  noRefundWarning: { color: ON_WHITE.warning, fontWeight: '600', fontSize: 12 },
+  blockedWarning: { color: ON_WHITE.error, fontSize: 12, fontWeight: '600' },
+  pastLabel: { color: COLORS.grey[700], fontSize: 12, marginTop: 8 },
+  cancellationReason: { color: COLORS.grey[700], fontSize: 13, marginTop: 8, fontStyle: 'italic' },
 });
