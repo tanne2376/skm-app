@@ -35,9 +35,11 @@ export function levelButtonStyle(level: ClassLevel | undefined): ViewStyle {
  * and the admin home card.
  */
 export function ClassCardShell({
-  title, level, cancelled = false, style, children,
+  title, level, cancelled = false, showTitle = true, style, children,
 }: {
   title: string;
+  /** false when the caller lays out the title itself (e.g. inline with the time). */
+  showTitle?: boolean;
   level: ClassLevel | undefined;
   cancelled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -47,7 +49,7 @@ export function ClassCardShell({
   return (
     <Card style={[styles.card, { borderTopColor: cancelled ? COLORS.grey[700] : levelStyle.band }, style]}>
       <View style={styles.body}>
-        <Text style={styles.className} numberOfLines={2}>{title}</Text>
+        {showTitle && <Text style={styles.className} numberOfLines={2}>{title}</Text>}
         {children}
       </View>
       {!cancelled && (

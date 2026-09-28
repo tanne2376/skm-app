@@ -415,17 +415,20 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
   }
 
   return (
-    <ClassCardShell title={session.class_templates?.name} level={session.class_templates?.level}>
+    <ClassCardShell title={session.class_templates?.name} level={session.class_templates?.level} showTitle={false}>
       <View style={styles.adminBody}>
       <View style={styles.adminHeader}>
         <View style={styles.adminInfo}>
-          <Text style={styles.adminTime}>
-            {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
-          </Text>
+          {/* Date lives in the day heading above, so keep this compact */}
+          <View style={styles.adminTitleRow}>
+            <Text style={styles.adminClassName} numberOfLines={1}>{session.class_templates?.name}</Text>
+            <Text style={styles.adminTime}>
+              {session.start_time.slice(0, 5)}–{session.end_time.slice(0, 5)}
+            </Text>
+          </View>
           <Text style={styles.adminMeta}>
-            {dateStr} · {formatGBP(session.effective_price)}
+            {teacherName} · {formatGBP(session.effective_price)}
           </Text>
-          <Text style={styles.adminTeacher}>{teacherName}</Text>
         </View>
         <View style={styles.adminStats}>
           <Text style={[styles.adminCount, isFull && styles.adminCountFull]}>
@@ -646,11 +649,12 @@ const styles = StyleSheet.create({
   emptyText: { color: COLORS.grey[600], fontSize: 15 },
 
   adminBody: { gap: 12 },
-  adminHeader: { flexDirection: 'row', gap: 8 },
+  adminHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   adminInfo: { flex: 1, gap: 3 },
-  adminTime: { color: COLORS.black, fontSize: 20, fontWeight: '800' },
+  adminTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  adminClassName: { color: COLORS.black, fontSize: 15, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', flexShrink: 1 },
+  adminTime: { color: COLORS.black, fontSize: 15, fontWeight: '600' },
   adminMeta: { color: COLORS.grey[700], fontSize: 13 },
-  adminTeacher: { color: COLORS.grey[700], fontSize: 13 },
   adminStats: { alignItems: 'flex-end' },
   adminCount: { color: COLORS.black, fontSize: 22, fontWeight: '800' },
   adminCountFull: { color: COLORS.accent },
