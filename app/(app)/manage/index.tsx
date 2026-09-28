@@ -189,6 +189,7 @@ function TimetableTab() {
       if (!editingTemplate) return;
       if (!editName.trim()) throw new Error('Name cannot be empty.');
       if (!editStart.match(/^\d{2}:\d{2}$/) || !editEnd.match(/^\d{2}:\d{2}$/)) throw new Error('Times must be HH:MM.');
+      if (editEnd <= editStart) throw new Error('End time must be after start time.');
       const cap = parseInt(editCapacity, 10);
       if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
       const price = Math.round(parseFloat(editPrice) * 100);
@@ -236,6 +237,7 @@ function TimetableTab() {
     mutationFn: async () => {
       if (!newName.trim()) throw new Error('Name is required.');
       if (!newStart.match(/^\d{2}:\d{2}$/) || !newEnd.match(/^\d{2}:\d{2}$/)) throw new Error('Times must be HH:MM.');
+      if (newEnd <= newStart) throw new Error('End time must be after start time.');
       const cap = parseInt(newCapacity, 10);
       const price = Math.round(parseFloat(newPrice) * 100);
       if (isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number.');
