@@ -182,7 +182,7 @@ describe('SessionCard', () => {
     };
     render(<SessionCard session={full} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Full')).toBeTruthy();
-    expect(screen.getByText(/Join Waiting List/i)).toBeTruthy();
+    expect(screen.getByText(/Join Waitlist/i)).toBeTruthy();
   });
 
   it('shows Cancelled badge when session is cancelled', () => {
