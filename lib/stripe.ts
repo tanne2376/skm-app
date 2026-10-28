@@ -1,4 +1,5 @@
 import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
+import { COLORS } from '@/constants';
 
 export interface PaymentSheetParams {
   paymentIntentClientSecret: string;
@@ -35,17 +36,17 @@ export async function initializePaymentSheet(params: PaymentSheetParams): Promis
     style: 'alwaysDark',
     appearance: {
       colors: {
-        primary: '#C8102E',
-        background: '#0A0A0A',
-        componentBackground: '#1A1A1A',
-        componentBorder: '#2E2E2E',
-        componentDivider: '#2E2E2E',
-        primaryText: '#FFFFFF',
-        secondaryText: '#9E9E9E',
-        componentText: '#FFFFFF',
-        placeholderText: '#5E5E5E',
-        icon: '#9E9E9E',
-        error: '#EF4444',
+        primary: COLORS.accent,
+        background: COLORS.black,
+        componentBackground: COLORS.grey[900],
+        componentBorder: COLORS.grey[800],
+        componentDivider: COLORS.grey[800],
+        primaryText: COLORS.white,
+        secondaryText: COLORS.grey[400],
+        componentText: COLORS.white,
+        placeholderText: COLORS.grey[600],
+        icon: COLORS.grey[400],
+        error: COLORS.error,
       },
     },
   });

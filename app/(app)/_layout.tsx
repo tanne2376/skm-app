@@ -37,7 +37,7 @@ export default function AppLayout() {
           paddingBottom: Platform.OS === 'ios' ? 20 : 8,
           height: Platform.OS === 'ios' ? 84 : 64,
         },
-        tabBarActiveTintColor: COLORS.white,
+        tabBarActiveTintColor: COLORS.accent,
         tabBarInactiveTintColor: COLORS.grey[600],
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
       }}

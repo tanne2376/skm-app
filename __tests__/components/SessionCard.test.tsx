@@ -24,7 +24,8 @@ const base: ClassSessionWithDetails = {
   created_at: '2026-01-01T00:00:00Z',
   class_templates: {
     id: 'tmpl-1',
-    name: 'Muay Thai (Beginners)',
+    name: 'Muay Thai',
+    level: 'beginners',
     day_of_week: 1,
     start_time: '18:30:00',
     end_time: '19:30:00',
@@ -48,7 +49,8 @@ describe('SessionCard', () => {
 
   it('renders class name and time', () => {
     render(<SessionCard session={base} onBook={noop} onCancel={noop} onClaim={noop} />);
-    expect(screen.getByText('Muay Thai (Beginners)')).toBeTruthy();
+    expect(screen.getByText('Muay Thai')).toBeTruthy();
+    expect(screen.getByText('Beginners')).toBeTruthy();
     expect(screen.getByText(/18:30/)).toBeTruthy();
   });
 
@@ -181,7 +183,7 @@ describe('SessionCard', () => {
     };
     render(<SessionCard session={full} onBook={noop} onCancel={noop} onClaim={noop} />);
     expect(screen.getByText('Full')).toBeTruthy();
-    expect(screen.getByText(/Join Waiting List/i)).toBeTruthy();
+    expect(screen.getByText(/Join Waitlist/i)).toBeTruthy();
   });
 
   it('shows Cancelled badge when session is cancelled', () => {

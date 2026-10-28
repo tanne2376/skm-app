@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   },
   optionAccent: {
     borderColor: COLORS.accent,
-    backgroundColor: 'rgba(200,16,46,0.08)',
+    backgroundColor: COLORS.accentTint,
   },
   disabled: { opacity: 0.5 },
   optionLabel: {

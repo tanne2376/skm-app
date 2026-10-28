@@ -1,9 +1,9 @@
-import { StyleSheet, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { COLORS } from '@/constants';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function Card({ children, style }: CardProps) {
@@ -20,6 +20,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.grey[800],
+    borderTopWidth: 3,
+    borderTopColor: COLORS.accent,
     padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
