@@ -745,7 +745,7 @@ function UsersTab() {
                         Record Payment
                       </Button>
                       <Button
-                        variant={item.is_manually_blocked ? 'secondary' : 'danger'}
+                        variant={item.is_manually_blocked ? 'secondary' : 'primary'}
                         size="sm"
                         onPress={() => handleToggleManualBlock(item)}
                         loading={setManualBlockMutation.isPending}
@@ -930,7 +930,7 @@ const styles = StyleSheet.create({
   daySection: { gap: 10 },
   dayHeading: { color: COLORS.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
 
-  card: { padding: 14 },
+  card: { padding: 14, borderTopWidth: 3 },  // level colour set inline
   cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
   cardName: { color: COLORS.white, fontSize: 15, fontWeight: '700', flexShrink: 1 },
   cardLevel: { fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },

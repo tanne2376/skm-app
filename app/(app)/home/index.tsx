@@ -449,7 +449,7 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
           Edit Time
         </Button>
         <Button
-          variant="danger"
+          variant="primary"
           size="sm"
           onPress={handleCancelSession}
           loading={cancelSession.isPending}

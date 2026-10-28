@@ -223,7 +223,7 @@ export default function SettingsScreen() {
         </Card>
 
         {/* Sign out */}
-        <Button variant="danger" size="lg" onPress={handleSignOut}>
+        <Button variant="primary" size="lg" onPress={handleSignOut}>
           Sign Out
         </Button>
       </ScrollView>
