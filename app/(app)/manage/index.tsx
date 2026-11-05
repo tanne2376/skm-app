@@ -11,6 +11,7 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { UserAvatarButton, UserDetailsSheet } from '@/components/UserDetailsSheet';
 import { supabase } from '@/lib/supabase';
 import { formatGBP } from '@/lib/stripe';
 import { ClassLevel, ClassTemplate, Profile } from '@/types';
@@ -502,6 +503,7 @@ function UsersTab() {
   const queryClient = useQueryClient();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [recordingPaymentFor, setRecordingPaymentFor] = useState<UserWithLateCancellations | null>(null);
+  const [detailsFor, setDetailsFor] = useState<UserWithLateCancellations | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
 
@@ -731,6 +733,7 @@ function UsersTab() {
                     )}
                     {item.is_blocked && <Badge label="Blocked" variant="error" />}
                   </View>
+                  {isExpanded && <UserAvatarButton name={item.full_name} onPress={() => setDetailsFor(item)} />}
                 </View>
 
                 {isExpanded && (
@@ -861,6 +864,13 @@ function UsersTab() {
           ) : null
         }
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+      />
+
+      <UserDetailsSheet
+        userId={detailsFor?.user_id ?? null}
+        fallbackName={detailsFor?.full_name}
+        membershipLabel={detailsFor ? formatMembership(detailsFor) : undefined}
+        onDismiss={() => setDetailsFor(null)}
       />
 
       <SlideUpModal

@@ -135,6 +135,19 @@ export async function invokeFunction<T = unknown>(
     body,
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
-  if (error) return { data: null, error: error instanceof Error ? error : new Error(String(error)) };
+  if (error) {
+    // Non-2xx responses (FunctionsHttpError) carry the Response; our functions
+    // reply with { error: message }, which is what callers should show.
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json();
+        if (typeof payload?.error === 'string') return { data: null, error: new Error(payload.error) };
+      } catch {
+        // Not JSON — fall back to the generic error below.
+      }
+    }
+    return { data: null, error: error instanceof Error ? error : new Error(String(error)) };
+  }
   return { data: data as T, error: null };
 }

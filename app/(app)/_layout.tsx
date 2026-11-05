@@ -3,11 +3,13 @@ import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
+import { useMyWaivers } from '@/hooks/useWaiver';
 import { COLORS } from '@/constants';
 import { registerForPushNotifications } from '@/lib/notifications';
 
 export default function AppLayout() {
   const { session, role, isLoading } = useAuth();
+  const waiversQuery = useMyWaivers();
 
   useEffect(() => {
     if (session) {
@@ -16,6 +18,9 @@ export default function AppLayout() {
   }, [session]);
 
   if (isLoading) return null;
+  // Signed-in accounts without any waiver are being redirected to /waiver by
+  // AuthGuard; render nothing so the tabs never flash behind it.
+  if (waiversQuery.isEnabled && !waiversQuery.data?.length) return null;
 
   const isTeacher = role === 'teacher';
   const isAdmin = role === 'admin';

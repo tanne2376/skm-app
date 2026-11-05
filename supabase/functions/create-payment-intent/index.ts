@@ -125,18 +125,32 @@ Deno.serve(async (req) => {
       stripe_payment_intent_id: paymentIntent.id,
     });
     if (bookingError) {
-      // Duplicate — already booked
       await stripe.paymentIntents.cancel(paymentIntent.id);
+      // bookings_require_adult_waiver trigger
+      if (bookingError.hint === 'waiver_required') return errorResponse(bookingError.message, 403);
+      // Duplicate — already booked
       return errorResponse('You already have a booking for this class.', 409);
     }
   } else {
-    await adminClient.from('one_to_ones').update({
+    // Only claim a still-open slot, so a stale checkout can't overwrite
+    // someone else's booking.
+    const { data: reserved, error: otoError } = await adminClient.from('one_to_ones').update({
       student_id: user.id,
       status: 'booked',
       payment_method: 'app',
       payment_status: 'pending',
       stripe_payment_intent_id: paymentIntent.id,
-    }).eq('id', oneToOneId);
+    }).eq('id', oneToOneId)
+      .eq('status', 'available')
+      .is('student_id', null)
+      .select('id');
+    if (otoError || !reserved?.length) {
+      await stripe.paymentIntents.cancel(paymentIntent.id);
+      // one_to_ones_require_adult_waiver trigger
+      if (otoError?.hint === 'waiver_required') return errorResponse(otoError.message, 403);
+      if (!otoError) return errorResponse('This 1-to-1 is no longer available.', 409);
+      return errorResponse('Could not reserve this 1-to-1.', 500);
+    }
   }
 
   return jsonResponse({

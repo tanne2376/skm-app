@@ -8,6 +8,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Linking from 'expo-linking';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { useMyWaivers } from '@/hooks/useWaiver';
 import { supabase } from '@/lib/supabase';
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ const stripePublishableKey = Constants.expoConfig?.extra?.stripePublishableKey a
 
 function AuthGuard() {
   const { session, isLoading, isPasswordRecovery, isEmailVerified } = useAuth();
+  const waiversQuery = useMyWaivers();
   const segments = useSegments();
   const router = useRouter();
 
@@ -37,10 +39,18 @@ function AuthGuard() {
 
     const inAuthGroup = segments[0] === '(auth)';
     const onVerifyEmail = inAuthGroup && segments[1] === 'verify-email';
+    const onWaiver = segments[0] === 'waiver';
+    const onSignWaiver = segments[0] === 'sign-waiver';
 
     // If the user signs out while on verify-email, redirect to login
     if (!session && onVerifyEmail) {
       router.replace('/(auth)/login');
+      return;
+    }
+
+    // Signed out from a waiver screen: back to guest browsing.
+    if (!session && (onWaiver || onSignWaiver)) {
+      router.replace('/(app)/home');
       return;
     }
 
@@ -51,13 +61,23 @@ function AuthGuard() {
       return;
     }
 
-    // Signed-in users dropped on a login/register screen go straight to home.
-    // Guests are free to roam the (app) group — gated actions redirect to
-    // login on tap via useRequireAuth.
-    if (session && inAuthGroup) {
-      router.replace('/(app)/home');
+    if (session) {
+      // Every account needs at least one signed waiver (the holder's own or a
+      // child's) before using the app. A failed lookup also lands on the
+      // waiver screen, which offers a retry.
+      if (waiversQuery.isPending) return;
+      if (!waiversQuery.data?.length) {
+        if (!onWaiver) router.replace('/waiver');
+        return;
+      }
+
+      // Signed-in users dropped on a login/register screen go straight to
+      // home. The waiver screen leaves by itself once everyone ticked has
+      // signed. Guests are free to roam the (app) group — gated actions
+      // redirect to login on tap via useRequireAuth.
+      if (inAuthGroup) router.replace('/(app)/home');
     }
-  }, [session, isLoading, isPasswordRecovery, isEmailVerified, segments]);
+  }, [session, isLoading, isPasswordRecovery, isEmailVerified, segments, waiversQuery.isPending, waiversQuery.data]);
 
   return null;
 }

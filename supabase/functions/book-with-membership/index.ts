@@ -91,6 +91,7 @@ Deno.serve(async (req) => {
 
   if (bookingError) {
     if (bookingError.code === '23505') return errorResponse('Already booked for this class.', 409);
+    if (bookingError.hint === 'waiver_required') return errorResponse(bookingError.message, 403);
     throw bookingError;
   }
 

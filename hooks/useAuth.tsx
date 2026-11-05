@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { Session } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '@/lib/supabase';
-import { Profile, UserRole } from '@/types';
+import { NewChild, Profile, UserRole } from '@/types';
 
 const PASSWORD_RECOVERY_KEY = 'skm_password_recovery';
 
@@ -21,7 +21,7 @@ interface AuthContextType {
   isEmailVerified: boolean;
   clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, phone?: string, children?: NewChild[]) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -88,17 +88,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile, setRecoveryFlag]);
 
+  // Children entered on the register screen travel in signup metadata and
+  // handle_new_user copies them into `children`. Once signed in and verified,
+  // drop the copy so their names and birth dates don't linger in auth.users.
+  const signupChildren = session?.user?.user_metadata?.children;
+  const isVerified = !!session?.user?.email_confirmed_at;
+  useEffect(() => {
+    if (!isVerified || !Array.isArray(signupChildren) || signupChildren.length === 0) return;
+    supabase.auth.updateUser({ data: { children: null } }).then(({ error }) => {
+      if (error) console.warn('Failed to clear signup child metadata', error.message);
+    });
+  }, [isVerified, signupChildren]);
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullName: string, phone?: string) => {
+  const signUp = async (email: string, password: string, fullName: string, phone?: string, children: NewChild[] = []) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName, phone: phone ?? '' },
+        // handle_new_user creates the children rows: the account can't write
+        // them itself until the email is verified.
+        data: { full_name: fullName, phone: phone ?? '', children },
         emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
       },
     });

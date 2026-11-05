@@ -42,6 +42,34 @@ export interface Profile {
   created_at: string;
 }
 
+export interface Child {
+  id: string;
+  parent_id: string;
+  full_name: string;
+  date_of_birth: string; // YYYY-MM-DD
+  created_at: string;
+}
+
+/** A child entered before it has a row (e.g. on the register screen). */
+export type NewChild = Pick<Child, 'full_name' | 'date_of_birth'>;
+
+export interface Waiver {
+  id: string;
+  user_id: string;
+  child_id: string | null; // null = the account holder's own waiver
+  waiver_version: string; // WAIVER_VERSION the signer saw; selects the wording when viewed
+  signer_name: string; // account holder; snapshotted from profiles on insert
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  photo_consent: boolean;
+  for_child: boolean; // server-set: child_id is not null
+  child_name: string | null; // snapshotted from children on insert
+  child_date_of_birth: string | null; // YYYY-MM-DD
+  guardian_relationship: string | null;
+  signature: string; // SVG document
+  signed_at: string;
+}
+
 export interface Location {
   id: string;
   name: string;

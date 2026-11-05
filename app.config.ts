@@ -6,6 +6,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: 'switch-kick-mafia',
   owner: 'bt439',
   version: '1.0.0',
+  // Scope OTA updates to binaries with matching native code (e.g. react-native-svg).
+  runtimeVersion: { policy: 'fingerprint' },
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
