@@ -88,6 +88,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile, setRecoveryFlag]);
 
+  // Children entered on the register screen travel in signup metadata and
+  // handle_new_user copies them into `children`. Once signed in and verified,
+  // drop the copy so their names and birth dates don't linger in auth.users.
+  const signupChildren = session?.user?.user_metadata?.children;
+  const isVerified = !!session?.user?.email_confirmed_at;
+  useEffect(() => {
+    if (!isVerified || !Array.isArray(signupChildren) || signupChildren.length === 0) return;
+    supabase.auth.updateUser({ data: { children: null } }).then(({ error }) => {
+      if (error) console.warn('Failed to clear signup child metadata', error.message);
+    });
+  }, [isVerified, signupChildren]);
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;

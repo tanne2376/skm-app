@@ -249,7 +249,9 @@ begin
   );
 
   if jsonb_typeof(new.raw_user_meta_data->'children') = 'array' then
-    for v_child in select * from jsonb_array_elements(new.raw_user_meta_data->'children')
+    -- validate_child caps an account at 10; don't process more than that.
+    for v_child in
+      select * from jsonb_array_elements(new.raw_user_meta_data->'children') limit 10
     loop
       begin
         insert into children (parent_id, full_name, date_of_birth)

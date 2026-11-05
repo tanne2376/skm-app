@@ -66,14 +66,24 @@ export function useSignWaiver() {
  * Wraps a booking action so it only runs once the account holder has signed
  * their own waiver; otherwise offers to sign it. Parents who only signed for
  * their children reach the app without one. The database enforces the same
- * rule, so an unknown state (still loading) just lets the action through.
+ * rule; until the lookup resolves the action is held back.
  */
 export function useRequireAdultWaiver() {
-  const { data: waivers } = useMyWaivers();
+  const { data: waivers, isError, refetch } = useMyWaivers();
   const router = useRouter();
 
   return (action: () => void) => {
-    if (waivers && !findAdultWaiver(waivers)) {
+    if (!waivers) {
+      // Still loading, or the lookup failed: don't start a booking (and
+      // possibly a payment) the database may then reject.
+      if (isError) refetch();
+      Alert.alert(
+        isError ? 'Couldn’t check your waiver' : 'One moment',
+        isError ? 'Check your connection and try again.' : 'Still checking your waiver. Please try again.',
+      );
+      return;
+    }
+    if (!findAdultWaiver(waivers)) {
       Alert.alert(
         'Sign your waiver',
         'You need to sign the participation waiver for yourself before you can book.',

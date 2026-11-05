@@ -42,14 +42,17 @@ export function WaiverForm({
 }: WaiverFormProps) {
   const signWaiver = useSignWaiver();
   const { profile } = useAuth();
+  // Children are signed before the parent, often with the parent as their
+  // emergency contact; that can't carry over to the parent's own waiver.
+  const prefill = child === null && initialEmergency?.name === signerName ? undefined : initialEmergency;
 
   const [relationship, setRelationship] = useState('');
-  const [emergencyName, setEmergencyName] = useState(initialEmergency?.name ?? '');
-  const [emergencyPhone, setEmergencyPhone] = useState(initialEmergency?.phone ?? '');
+  const [emergencyName, setEmergencyName] = useState(prefill?.name ?? '');
+  const [emergencyPhone, setEmergencyPhone] = useState(prefill?.phone ?? '');
   // Child waivers only: the signing parent is the emergency contact. Starts
   // ticked when the previous waiver in this sitting used the parent too.
   const [selfContact, setSelfContact] = useState(
-    child !== null && !!initialEmergency && initialEmergency.name === signerName,
+    child !== null && prefill?.name === signerName,
   );
 
   function toggleSelfContact() {
