@@ -191,6 +191,7 @@ export default function SettingsScreen() {
         <Card>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.adminLinks}>
+            <SettingsRow label="Family & Waivers" onPress={() => router.push('/(app)/settings/family')} />
             <SettingsRow label="Change Password" onPress={() => router.push('/(app)/settings/change-password')} />
             <SettingsRow label="Delete Account" onPress={() => router.push('/(app)/settings/delete-account')} />
           </View>

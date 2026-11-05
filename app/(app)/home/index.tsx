@@ -28,6 +28,7 @@ import { getClassLeaderName } from '@/lib/teacherName';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
 import { useAuth } from '@/hooks/useAuth';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { useRequireAdultWaiver } from '@/hooks/useWaiver';
 import { useBookingBlocked } from '@/hooks/useLateCancellations';
 import { supabase, invokeFunction } from '@/lib/supabase';
 import { ClassSessionWithDetails, PaymentMethod } from '@/types';
@@ -37,6 +38,7 @@ interface RosterRow {
   booking_id: string;
   student_id: string;
   student_name: string;
+  guardian_name: string | null; // set when the account is a child's, signed for by this parent
   booked_at: string;
   payment_method: string;
   payment_status: 'pending' | 'paid' | 'refunded' | 'no_refund';
@@ -59,6 +61,7 @@ export default function HomeScreen() {
   const queryClient = useQueryClient();
   const { role, session: authSession } = useAuth();
   const requireAuth = useRequireAuth();
+  const requireAdultWaiver = useRequireAdultWaiver();
   const isAdmin = role === 'admin';
   const { data: allSessions, isLoading, isFetching, refetch } = useUpcomingSessions();
 
@@ -230,7 +233,7 @@ export default function HomeScreen() {
             ) : (
               <SessionCard
                 session={item}
-                onBook={() => requireAuth(() => handleBookPress(item))}
+                onBook={() => requireAuth(() => requireAdultWaiver(() => handleBookPress(item)))}
                 onCancel={() => requireAuth(() => handleCancel(item))}
                 onClaim={() => requireAuth(() => handleClaim(item))}
                 isMutating={isMutating}
@@ -494,6 +497,7 @@ function AdminSessionCard({ session }: { session: ClassSessionWithDetails }) {
                   <View style={styles.rosterRow}>
                     <View style={{ flex: 1, gap: 6 }}>
                       <Text style={styles.rosterName}>{item.student_name}</Text>
+                      {item.guardian_name && <Text style={styles.guardianName}>Parent: {item.guardian_name}</Text>}
                       <View style={styles.rosterBadgeRow}>
                         <PaymentStatusBadge
                           status={item.payment_status}
@@ -686,6 +690,7 @@ const styles = StyleSheet.create({
   rosterCard: { padding: 12 },
   rosterRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   rosterName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  guardianName: { color: COLORS.grey[400], fontSize: 13 },
   rosterBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   rosterFollowUp: { color: COLORS.warning, fontSize: 13, fontWeight: '700' },
   rosterFollowUpHint: { color: COLORS.grey[600], fontSize: 11, lineHeight: 15 },

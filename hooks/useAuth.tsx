@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { Session } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '@/lib/supabase';
-import { Profile, UserRole } from '@/types';
+import { NewChild, Profile, UserRole } from '@/types';
 
 const PASSWORD_RECOVERY_KEY = 'skm_password_recovery';
 
@@ -21,7 +21,7 @@ interface AuthContextType {
   isEmailVerified: boolean;
   clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, phone?: string, children?: NewChild[]) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -93,12 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullName: string, phone?: string) => {
+  const signUp = async (email: string, password: string, fullName: string, phone?: string, children: NewChild[] = []) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName, phone: phone ?? '' },
+        // handle_new_user creates the children rows: the account can't write
+        // them itself until the email is verified.
+        data: { full_name: fullName, phone: phone ?? '', children },
         emailRedirectTo: EMAIL_VERIFICATION_REDIRECT_URL,
       },
     });

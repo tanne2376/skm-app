@@ -14,6 +14,7 @@ interface RosterRow {
   booking_id: string;
   student_id: string;
   student_name: string;
+  guardian_name: string | null; // set when the account is a child's, signed for by this parent
   booked_at: string;
   payment_method: string;
   payment_status: 'pending' | 'paid' | 'refunded' | 'no_refund';
@@ -130,6 +131,7 @@ export default function MyClassRosterScreen() {
               <View style={styles.studentRow}>
                 <View style={styles.flex}>
                   <Text style={styles.studentName}>{item.student_name}</Text>
+                  {item.guardian_name && <Text style={styles.guardianName}>Parent: {item.guardian_name}</Text>}
                   <View style={styles.badgeRow}>
                     <PaymentStatusBadge
                       status={item.payment_status}
@@ -209,6 +211,7 @@ const styles = StyleSheet.create({
   studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flex: { flex: 1, gap: 6 },
   studentName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  guardianName: { color: COLORS.grey[400], fontSize: 13 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   followUpAmount: { color: COLORS.warning, fontSize: 13, fontWeight: '700' },
   followUpHint: { color: COLORS.grey[600], fontSize: 11, lineHeight: 15 },

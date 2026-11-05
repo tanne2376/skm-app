@@ -12,9 +12,13 @@ import {
   Alert,
 } from 'react-native';
 import { Link, router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { COLORS } from '@/constants';
 import { PasswordInput } from '@/components/ui/PasswordInput';
+import { AddChildForm } from '@/components/AddChildForm';
+import { formatUKDate, fromISODate } from '@/lib/waiver';
+import { NewChild } from '@/types';
 
 export default function RegisterScreen() {
   const { signUp } = useAuth();
@@ -24,6 +28,8 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [children, setChildren] = useState<NewChild[]>([]);
+  const [showAddChild, setShowAddChild] = useState(false);
 
   async function handleRegister() {
     if (!fullName.trim() || !email.trim() || !password) {
@@ -41,7 +47,7 @@ export default function RegisterScreen() {
 
     setIsLoading(true);
     try {
-      await signUp(email.trim().toLowerCase(), password, fullName.trim(), phone.trim() || undefined);
+      await signUp(email.trim().toLowerCase(), password, fullName.trim(), phone.trim() || undefined, children);
       Alert.alert(
         'Check your email',
         'We sent you a verification link. Click it to activate your account.',
@@ -119,6 +125,47 @@ export default function RegisterScreen() {
           placeholder="••••••••"
         />
 
+        <Text style={styles.label}>Children (optional)</Text>
+        <Text style={styles.hint}>
+          Training with your kids, or signing up for them? Add each child here. You’ll sign their waivers after verifying your email.
+        </Text>
+        {children.map((c, i) => (
+          <View key={`${c.full_name}-${i}`} style={styles.childRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.childName}>{c.full_name}</Text>
+              <Text style={styles.childDob}>Born {formatUKDate(fromISODate(c.date_of_birth))}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setChildren((prev) => prev.filter((_, j) => j !== i))}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${c.full_name}`}
+            >
+              <Feather name="x" size={18} color={COLORS.grey[500]} />
+            </TouchableOpacity>
+          </View>
+        ))}
+        {showAddChild ? (
+          <View style={styles.addChildForm}>
+            <AddChildForm
+              inputStyle={styles.childInput}
+              onAdd={(child) => {
+                setChildren((prev) => [...prev, child]);
+                setShowAddChild(false);
+              }}
+            />
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.addChildLink}
+            onPress={() => setShowAddChild(true)}
+            accessibilityRole="button"
+          >
+            <Feather name="plus" size={16} color={COLORS.accent} />
+            <Text style={styles.addChildText}>Add a child to my account</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.button, isLoading && styles.buttonDisabled]}
           onPress={handleRegister}
@@ -186,6 +233,46 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     color: COLORS.white,
     fontSize: 16,
+  },
+  hint: {
+    color: COLORS.grey[500],
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  childRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.grey[800],
+  },
+  childName: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  childDob: {
+    color: COLORS.grey[400],
+    fontSize: 13,
+  },
+  addChildForm: {
+    marginTop: 8,
+  },
+  childInput: {
+    backgroundColor: COLORS.grey[900],
+    borderColor: COLORS.grey[800],
+  },
+  addChildLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 14,
+  },
+  addChildText: {
+    color: COLORS.accent,
+    fontSize: 15,
+    fontWeight: '600',
   },
   button: {
     backgroundColor: COLORS.accent,
