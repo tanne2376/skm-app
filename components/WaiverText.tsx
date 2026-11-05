@@ -1,14 +1,17 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '@/constants';
-import { WAIVER_SECTIONS, WAIVER_SUBTITLE, WAIVER_TITLE } from '@/constants/waiver';
+import { CURRENT_WAIVER_CONTENT, WaiverContent } from '@/constants/waiver';
 
-/** The acknowledgment's heading and terms, shared by the signing and read-only screens. */
-export function WaiverText() {
+/**
+ * The acknowledgment's heading and terms, shared by the signing screen
+ * (current wording) and the read-only screen (the wording that was signed).
+ */
+export function WaiverText({ content = CURRENT_WAIVER_CONTENT }: { content?: WaiverContent }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{WAIVER_TITLE}</Text>
-      <Text style={styles.subtitle}>{WAIVER_SUBTITLE}</Text>
-      {WAIVER_SECTIONS.map((s) => (
+      <Text style={styles.title}>{content.title}</Text>
+      <Text style={styles.subtitle}>{content.subtitle}</Text>
+      {content.sections.map((s) => (
         <View key={s.heading}>
           <Text style={styles.heading}>{s.heading}</Text>
           <Text style={styles.body}>{s.body}</Text>

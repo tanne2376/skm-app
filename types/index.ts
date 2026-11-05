@@ -57,6 +57,7 @@ export interface Waiver {
   id: string;
   user_id: string;
   child_id: string | null; // null = the account holder's own waiver
+  waiver_version: string; // WAIVER_VERSION the signer saw; selects the wording when viewed
   signer_name: string; // account holder; snapshotted from profiles on insert
   emergency_contact_name: string;
   emergency_contact_phone: string;

@@ -4,9 +4,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { COLORS } from '@/constants';
-import {
-  WAIVER_FOOTER, WAIVER_GUARDIAN_STATEMENT, WAIVER_PHOTO_CONSENT, WAIVER_PHOTO_CONSENT_CHILD,
-} from '@/constants/waiver';
+import { CURRENT_WAIVER_CONTENT as TEXT, WAIVER_VERSION } from '@/constants/waiver';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SignaturePad } from '@/components/SignaturePad';
@@ -95,6 +93,7 @@ export function WaiverForm({
     signWaiver.mutate(
       {
         child_id: child?.id ?? null,
+        waiver_version: WAIVER_VERSION,
         emergency_contact_name: emergency.name,
         emergency_contact_phone: emergency.phone,
         photo_consent: photoConsent!,
@@ -139,7 +138,7 @@ export function WaiverForm({
         {child && (
           <Card>
             <Text style={waiverTextStyles.heading}>Parent / Guardian</Text>
-            <Text style={[waiverTextStyles.body, styles.gapBelow]}>{WAIVER_GUARDIAN_STATEMENT}</Text>
+            <Text style={[waiverTextStyles.body, styles.gapBelow]}>{TEXT.guardianStatement}</Text>
             <Field
               label="Your relationship to the child"
               value={relationship}
@@ -185,7 +184,7 @@ export function WaiverForm({
         <Card>
           <Text style={waiverTextStyles.heading}>Optional Photo / Video Consent</Text>
           <Text style={waiverTextStyles.body}>
-            {forChild ? WAIVER_PHOTO_CONSENT_CHILD : WAIVER_PHOTO_CONSENT}
+            {forChild ? TEXT.photoConsentChild : TEXT.photoConsent}
           </Text>
           <View style={styles.choiceRow}>
             <Choice label="Yes" selected={photoConsent === true} onPress={() => setPhotoConsent(true)} />
@@ -207,7 +206,7 @@ export function WaiverForm({
           <Text style={styles.dateLine}>Date: {formatUKDate(today)}</Text>
         </Card>
 
-        <Text style={styles.footer}>{WAIVER_FOOTER}</Text>
+        <Text style={styles.footer}>{TEXT.footer}</Text>
 
         <Button variant="primary" size="lg" onPress={handleSubmit} loading={signWaiver.isPending}>
           {submitLabel}

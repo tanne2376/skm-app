@@ -2,9 +2,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-nat
 import { useLocalSearchParams } from 'expo-router';
 import { SvgXml } from 'react-native-svg';
 import { COLORS } from '@/constants';
-import {
-  WAIVER_FOOTER, WAIVER_GUARDIAN_STATEMENT, WAIVER_PHOTO_CONSENT, WAIVER_PHOTO_CONSENT_CHILD,
-} from '@/constants/waiver';
+import { getWaiverContent } from '@/constants/waiver';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Card } from '@/components/ui/Card';
 import { WaiverText, waiverTextStyles } from '@/components/WaiverText';
@@ -34,6 +32,8 @@ export default function ViewWaiverScreen() {
   }
 
   const signedOn = formatUKDate(new Date(waiver.signed_at));
+  // The wording this waiver was signed under, not today's.
+  const text = getWaiverContent(waiver.waiver_version);
 
   return (
     <View style={styles.container}>
@@ -41,16 +41,23 @@ export default function ViewWaiverScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Card>
           <Text style={styles.signedBanner}>Signed on {signedOn}</Text>
+          <Text style={styles.version}>Version {waiver.waiver_version}</Text>
         </Card>
 
         <Card>
-          <WaiverText />
+          {text ? (
+            <WaiverText content={text} />
+          ) : (
+            <Text style={styles.muted}>
+              This waiver was signed under a newer version of the acknowledgment. Update the app to view its wording.
+            </Text>
+          )}
         </Card>
 
         {waiver.for_child && (
           <Card>
             <Text style={waiverTextStyles.heading}>Signed On Behalf Of A Child</Text>
-            <Text style={waiverTextStyles.body}>{WAIVER_GUARDIAN_STATEMENT}</Text>
+            <Text style={waiverTextStyles.body}>{text?.guardianStatement}</Text>
             <Detail label="Child" value={waiver.child_name ?? ''} />
             <Detail
               label="Date of birth"
@@ -68,9 +75,11 @@ export default function ViewWaiverScreen() {
 
         <Card>
           <Text style={waiverTextStyles.heading}>Optional Photo / Video Consent</Text>
-          <Text style={waiverTextStyles.body}>
-            {waiver.for_child ? WAIVER_PHOTO_CONSENT_CHILD : WAIVER_PHOTO_CONSENT}
-          </Text>
+          {text && (
+            <Text style={waiverTextStyles.body}>
+              {waiver.for_child ? text.photoConsentChild : text.photoConsent}
+            </Text>
+          )}
           <Detail label="Answer" value={waiver.photo_consent ? 'Yes' : 'No'} />
         </Card>
 
@@ -83,7 +92,7 @@ export default function ViewWaiverScreen() {
           <Detail label="Date" value={signedOn} />
         </Card>
 
-        <Text style={styles.footer}>{WAIVER_FOOTER}</Text>
+        {text && <Text style={styles.footer}>{text.footer}</Text>}
       </ScrollView>
     </View>
   );
@@ -103,6 +112,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 48 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   muted: { color: COLORS.grey[400], fontSize: 15 },
+  version: { color: COLORS.grey[400], fontSize: 13, marginTop: 4 },
   signedBanner: { color: COLORS.success, fontSize: 15, fontWeight: '700' },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.grey[800] },
   detailLabel: { color: COLORS.grey[400], fontSize: 14 },

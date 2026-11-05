@@ -1,10 +1,15 @@
 // Text of "The Scrapyard Combat Academy Ltd — Participation, Gym & Sauna
 // Acknowledgment 2026". Keep in sync with the signed paper form.
+//
+// Each signed waiver stores the version it was signed under, and the
+// read-only screen renders that version's wording. When the wording changes,
+// keep the old version in WAIVER_CONTENT, add the new one, and bump
+// WAIVER_VERSION (and the check on waivers.waiver_version).
 
-export const WAIVER_TITLE = 'The Scrapyard Combat Academy Ltd';
-export const WAIVER_SUBTITLE = 'Participation, Gym & Sauna Acknowledgment | 2026';
+const WAIVER_TITLE = 'The Scrapyard Combat Academy Ltd';
+const WAIVER_SUBTITLE = 'Participation, Gym & Sauna Acknowledgment | 2026';
 
-export const WAIVER_SECTIONS: { heading: string; body: string }[] = [
+const WAIVER_SECTIONS: { heading: string; body: string }[] = [
   {
     heading: 'Activities & Risks',
     body:
@@ -32,13 +37,44 @@ export const WAIVER_SECTIONS: { heading: string; body: string }[] = [
   },
 ];
 
-export const WAIVER_PHOTO_CONSENT =
+const WAIVER_PHOTO_CONSENT =
   'I agree to photos or videos of me being used by The Scrapyard Combat Academy Ltd for its website, social media and promotional materials. Declining does not affect access. I may withdraw consent for future use by contacting the gym; material already distributed may not be retractable.';
 
 /** Photo consent wording when a parent signs on behalf of their child. */
-export const WAIVER_PHOTO_CONSENT_CHILD = WAIVER_PHOTO_CONSENT.replace('photos or videos of me', 'photos or videos of my child');
+const WAIVER_PHOTO_CONSENT_CHILD = WAIVER_PHOTO_CONSENT.replace('photos or videos of me', 'photos or videos of my child');
 
-export const WAIVER_GUARDIAN_STATEMENT =
+const WAIVER_GUARDIAN_STATEMENT =
   "I confirm I have parental responsibility and consent to the child's participation in permitted activities. I will tell staff about relevant health or safety needs. The child remains subject to the gym's age, supervision and sauna access rules. The legal rights statement above also applies to the child.";
 
-export const WAIVER_FOOTER = 'Please read the separate gym and sauna rules before using the facilities.';
+const WAIVER_FOOTER = 'Please read the separate gym and sauna rules before using the facilities.';
+
+export interface WaiverContent {
+  title: string;
+  subtitle: string;
+  sections: { heading: string; body: string }[];
+  photoConsent: string;
+  photoConsentChild: string;
+  guardianStatement: string;
+  footer: string;
+}
+
+export const WAIVER_VERSION = '2026';
+
+export const WAIVER_CONTENT: Record<string, WaiverContent> = {
+  '2026': {
+    title: WAIVER_TITLE,
+    subtitle: WAIVER_SUBTITLE,
+    sections: WAIVER_SECTIONS,
+    photoConsent: WAIVER_PHOTO_CONSENT,
+    photoConsentChild: WAIVER_PHOTO_CONSENT_CHILD,
+    guardianStatement: WAIVER_GUARDIAN_STATEMENT,
+    footer: WAIVER_FOOTER,
+  },
+};
+
+/** The wording for a signed waiver's version, or null if this build doesn't have it. */
+export function getWaiverContent(version: string): WaiverContent | null {
+  return WAIVER_CONTENT[version] ?? null;
+}
+
+export const CURRENT_WAIVER_CONTENT = WAIVER_CONTENT[WAIVER_VERSION];

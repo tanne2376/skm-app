@@ -8,7 +8,7 @@ import { useAuth } from './useAuth';
 
 export type WaiverInput = Pick<
   Waiver,
-  'child_id' | 'emergency_contact_name' | 'emergency_contact_phone' | 'photo_consent' | 'guardian_relationship' | 'signature'
+  'child_id' | 'waiver_version' | 'emergency_contact_name' | 'emergency_contact_phone' | 'photo_consent' | 'guardian_relationship' | 'signature'
 >;
 
 /**
