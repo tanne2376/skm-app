@@ -11,6 +11,7 @@ let mockWaivers: Waiver[] = [];
 let mockMemberships: MembershipWithUsage[] = [];
 const mockMutation = { mutate: jest.fn(), isPending: false };
 
+jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('../../lib/stripe', () => ({ formatGBP: (p: number) => `£${(p / 100).toFixed(2)}` }));
 jest.mock('../../hooks/useChildren', () => ({ useChildren: () => ({ data: mockChildren }) }));

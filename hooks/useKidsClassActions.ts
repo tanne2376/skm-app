@@ -1,4 +1,5 @@
 import { Alert } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { CANCELLATION_WINDOW_HOURS, MEMBERSHIP_PRICES_PENCE } from '@/constants';
 import { formatGBP } from '@/lib/stripe';
@@ -33,6 +34,7 @@ interface Options {
  * they're missing (a waiver or a kids membership).
  */
 export function useKidsClassActions({ isBlockedFromBooking, lateCancelCount }: Options) {
+  const queryClient = useQueryClient();
   const { data: children } = useChildren();
   const { data: waivers } = useMyWaivers();
   const { data: kidsMemberships } = useKidsMemberships();
@@ -81,7 +83,14 @@ export function useKidsClassActions({ isBlockedFromBooking, lateCancelCount }: O
         : `Cancel ${child.full_name}’s booking?`,
       [
         { text: 'Keep Booking', style: 'cancel' },
-        { text: 'Cancel Booking', style: 'destructive', onPress: () => cancelBooking.mutate(booking.id) },
+        {
+          text: 'Cancel Booking',
+          style: 'destructive',
+          // A late cancellation can change the strike count or block booking.
+          onPress: () => cancelBooking.mutate(booking.id, {
+            onSuccess: () => queryClient.invalidateQueries({ queryKey: ['late_cancellation_block'] }),
+          }),
+        },
       ],
     );
   }

@@ -20,8 +20,11 @@ interface SessionCardProps {
   isBlockedFromBooking?: boolean;
   /** Names of the account's children by id, for kids-class bookings. */
   childNames?: Record<string, string>;
-  /** Kids classes: the button label when the tap goes straight to one child. */
-  actionLabel?: string;
+  /**
+   * Kids classes: the button label when the tap goes straight to one child.
+   * A function so it's recomputed as claim windows expire.
+   */
+  actionLabel?: () => string | undefined;
 }
 
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
@@ -85,6 +88,9 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
     : null;
   const claimActive =
     claimStartedAt !== null && now.getTime() - claimStartedAt < CLAIM_WINDOW_MS;
+  const childClaimActive = (session.child_bookings ?? []).some((b) =>
+    b.status === 'waitlisted' && b.claim_window_started_at
+    && now.getTime() - new Date(b.claim_window_started_at).getTime() < CLAIM_WINDOW_MS);
   const claimMinutesLeft = claimActive
     ? Math.max(1, Math.ceil((CLAIM_WINDOW_MS - (now.getTime() - claimStartedAt!)) / 60000))
     : 0;
@@ -93,10 +99,10 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
   // claim box disappears when the window expires.
   const [, setTick] = useState(0);
   useEffect(() => {
-    if (!claimActive) return;
+    if (!claimActive && !childClaimActive) return;
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
-  }, [claimActive]);
+  }, [claimActive, childClaimActive]);
 
   const title = session.class_templates.name;
   const level = session.class_templates.level;
@@ -127,7 +133,7 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
     const waitlisted = childBookings.filter((b) => b.status === 'waitlisted');
     const claimable = waitlisted.filter((b) =>
       b.claim_window_started_at && now.getTime() - new Date(b.claim_window_started_at).getTime() < CLAIM_WINDOW_MS);
-    const label = actionLabel
+    const label = actionLabel?.()
       ?? (claimable.length > 0 ? 'Claim Spot' : childBookings.length > 0 ? 'Manage' : isFull ? 'Join Waitlist' : 'Book');
     const primary = label === 'Book' || label === 'Claim Spot';
     return (

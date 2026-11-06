@@ -256,7 +256,7 @@ export default function HomeScreen() {
                 onClaim={() => requireAuth(() => handleKidsClassPress(item))}
                 isMutating={kidsActions.isMutating}
                 childNames={childNames}
-                actionLabel={kidsActions.soleChildLabel(item)}
+                actionLabel={() => kidsActions.soleChildLabel(item)}
               />
             ) : (
               <SessionCard
