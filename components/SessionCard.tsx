@@ -18,6 +18,13 @@ interface SessionCardProps {
   isAdmin?: boolean;
   freeWithMembership?: boolean;
   isBlockedFromBooking?: boolean;
+  /** Names of the account's children by id, for kids-class bookings. */
+  childNames?: Record<string, string>;
+  /**
+   * Kids classes: the button label when the tap goes straight to one child.
+   * A function so it's recomputed as claim windows expire.
+   */
+  actionLabel?: () => string | undefined;
 }
 
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
@@ -60,7 +67,7 @@ export function ClassCardShell({
   );
 }
 
-export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false }: SessionCardProps) {
+export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = false, isAdmin = false, freeWithMembership = false, isBlockedFromBooking = false, childNames = {}, actionLabel }: SessionCardProps) {
   const { data: defaultLeaderName } = useDefaultClassLeaderName();
   const now = new Date();
   const sessionStart = new Date(`${session.session_date}T${session.start_time}`);
@@ -81,6 +88,9 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
     : null;
   const claimActive =
     claimStartedAt !== null && now.getTime() - claimStartedAt < CLAIM_WINDOW_MS;
+  const childClaimActive = (session.child_bookings ?? []).some((b) =>
+    b.status === 'waitlisted' && b.claim_window_started_at
+    && now.getTime() - new Date(b.claim_window_started_at).getTime() < CLAIM_WINDOW_MS);
   const claimMinutesLeft = claimActive
     ? Math.max(1, Math.ceil((CLAIM_WINDOW_MS - (now.getTime() - claimStartedAt!)) / 60000))
     : 0;
@@ -89,10 +99,10 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
   // claim box disappears when the window expires.
   const [, setTick] = useState(0);
   useEffect(() => {
-    if (!claimActive) return;
+    if (!claimActive && !childClaimActive) return;
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
-  }, [claimActive]);
+  }, [claimActive, childClaimActive]);
 
   const title = session.class_templates.name;
   const level = session.class_templates.level;
@@ -110,6 +120,56 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
           {session.cancellation_reason ? (
             <Text style={styles.cancellationReason}>{session.cancellation_reason}</Text>
           ) : null}
+      </ClassCardShell>
+    );
+  }
+
+  // Kids classes are booked per child, membership-only. onBook opens the
+  // "who is this for?" sheet, where each child is booked, cancelled or claimed.
+  if (level === 'kids') {
+    const childBookings = session.child_bookings ?? [];
+    const nameOf = (b: { child_id: string | null }) => childNames[b.child_id ?? ''] ?? 'Your child';
+    const booked = childBookings.filter((b) => b.status === 'confirmed').map(nameOf);
+    const waitlisted = childBookings.filter((b) => b.status === 'waitlisted');
+    const claimable = waitlisted.filter((b) =>
+      b.claim_window_started_at && now.getTime() - new Date(b.claim_window_started_at).getTime() < CLAIM_WINDOW_MS);
+    const label = actionLabel?.()
+      ?? (claimable.length > 0 ? 'Claim Spot' : childBookings.length > 0 ? 'Manage' : isFull ? 'Join Waitlist' : 'Book');
+    const primary = label === 'Book' || label === 'Claim Spot';
+    return (
+      <ClassCardShell title={title} level={level} style={isPast && styles.pastCard}>
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <Text style={styles.time}>{timeStr}</Text>
+            <Text style={styles.meta}>{dateStr} · {teacherName}</Text>
+            <Text style={styles.price}>Kids membership</Text>
+          </View>
+          <View style={styles.rightColumn}>
+            {isFull && childBookings.length === 0 && <Badge label="Full" variant="error" />}
+            {!isPast && (
+              <Button
+                variant={primary ? 'primary' : 'secondary'}
+                size="sm"
+                onPress={onBook}
+                loading={isMutating}
+                style={primary ? levelButtonStyle(level) : undefined}
+              >
+                {label}
+              </Button>
+            )}
+          </View>
+        </View>
+        {booked.length > 0 && (
+          <Text style={[styles.childBooked, styles.notice]}>Booked: {booked.join(', ')}</Text>
+        )}
+        {waitlisted.length > 0 && (
+          <Text style={[claimable.length > 0 ? styles.claimTitle : styles.waitlistPosition, styles.notice]}>
+            {claimable.length > 0
+              ? `A spot opened up for ${claimable.map(nameOf).join(', ')}!`
+              : `Waitlist: ${waitlisted.map((b) => `${nameOf(b)} (#${b.waitlist_position})`).join(', ')}`}
+          </Text>
+        )}
+        {isPast && <Text style={styles.pastLabel}>Class has ended</Text>}
       </ClassCardShell>
     );
   }
@@ -228,6 +288,7 @@ const styles = StyleSheet.create({
   spots: { color: COLORS.black, fontSize: 13, fontWeight: '700' },
   spotsFull: { color: COLORS.accent },
   waitlistPosition: { color: ON_WHITE.warning, fontWeight: '600', fontSize: 13 },
+  childBooked: { color: ON_WHITE.success, fontWeight: '600', fontSize: 13 },
   claimBox: {
     backgroundColor: 'rgba(34,197,94,0.1)',
     borderRadius: 10,

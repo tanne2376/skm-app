@@ -11,15 +11,21 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
+  // membershipId picks a kids membership; without it, the account holder's own
+  // (older builds don't send one).
+  const { membershipId } = await req.json().catch(() => ({})) as { membershipId?: string };
+
   const adminClient = createAdminClient();
 
   // Find user's active membership
-  const { data: membership, error } = await adminClient
+  const membershipQuery = adminClient
     .from('memberships')
     .select('id, stripe_subscription_id, payment_method')
     .eq('student_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle();
+    .eq('status', 'active');
+  const { data: membership, error } = await (
+    membershipId ? membershipQuery.eq('id', membershipId) : membershipQuery.is('child_id', null)
+  ).maybeSingle();
 
   if (error) return errorResponse('Failed to look up membership.', 500);
   if (!membership) return errorResponse('No active membership found.', 404);

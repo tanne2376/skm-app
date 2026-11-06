@@ -6,6 +6,7 @@ import { MembershipWithUsage } from '../../types';
 const unlimitedMembership: MembershipWithUsage = {
   id: 'm1',
   student_id: 'u1',
+  child_id: null,
   tier: 'unlimited',
   stripe_subscription_id: 'sub_xxx',
   stripe_price_id: 'price_xxx',

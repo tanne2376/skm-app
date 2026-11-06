@@ -209,12 +209,24 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ received: true, diag }), { headers: { 'Content-Type': 'application/json' } });
       }
 
-      const tier = priceId === Deno.env.get('STRIPE_PRICE_UNLIMITED') ? 'unlimited' : 'two_per_week';
+      const tier = priceId === Deno.env.get('STRIPE_PRICE_UNLIMITED')
+        ? 'unlimited'
+        : priceId === Deno.env.get('STRIPE_PRICE_KIDS')
+          ? 'kids'
+          : 'two_per_week';
       diag.tier = tier;
+
+      // create-subscription stamps the child on kids subscriptions
+      const childId = tier === 'kids' ? (subscription.metadata?.child_id || null) : null;
+      diag.childId = childId;
+      if (tier === 'kids' && !childId) {
+        throw new Error(`Kids subscription ${subscriptionId} has no child_id metadata`);
+      }
 
       if (billingReason === 'subscription_create') {
         const { data: upsertData, error: upsertErr } = await adminClient.from('memberships').upsert({
           student_id: profile.id,
+          child_id: childId,
           tier,
           stripe_subscription_id: subscriptionId,
           stripe_price_id: priceId,
@@ -225,6 +237,25 @@ Deno.serve(async (req) => {
 
         diag.upsertData = upsertData;
         diag.upsertErr = upsertErr?.message ?? null;
+
+        if (upsertErr) {
+          // 23505: this person already has a live membership (a duplicate
+          // purchase). 23503: the child was removed during checkout. Either
+          // way the subscription can never become a membership, so stop it
+          // billing and refund the first charge rather than leave it orphaned.
+          // On a retry the upsert fails the same way and cleanup runs again.
+          if (upsertErr.code === '23505' || upsertErr.code === '23503') {
+            if (!(await cancelAndRefundSubscription(subscriptionId, obj.id, upsertErr.message))) {
+              // Fail so Stripe retries; the cleanup is safe to repeat.
+              throw new Error(`Cleanup of orphaned subscription ${subscriptionId} failed`);
+            }
+            diag.exit = 'orphaned_subscription_cancelled';
+            console.error(`[WEBHOOK] invoice handler diag:`, JSON.stringify(diag));
+            return new Response(JSON.stringify({ received: true, diag }), { headers: { 'Content-Type': 'application/json' } });
+          }
+          // Anything else may be transient: fail so Stripe retries.
+          throw new Error(`Membership upsert failed for ${subscriptionId}: ${upsertErr.message}`);
+        }
       } else {
         const { data: updateData, error: updateErr } = await adminClient
           .from('memberships')
@@ -253,11 +284,13 @@ Deno.serve(async (req) => {
     try {
       const rawSub = obj.subscription ?? obj.parent?.subscription_details?.subscription;
       const subId = typeof rawSub === 'string' ? rawSub : rawSub?.id;
+      let childName: string | null = null;
       if (subId) {
         await adminClient
           .from('memberships')
           .update({ status: 'past_due' })
           .eq('stripe_subscription_id', subId);
+        childName = await membershipChildName(adminClient, subId);
       }
 
       const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
@@ -273,7 +306,9 @@ Deno.serve(async (req) => {
             userId: profile.id,
             type: 'membership_renewal',
             title: 'Membership payment failed',
-            body: 'Your membership payment could not be processed. Please update your payment method.',
+            body: childName
+              ? `The payment for ${childName}'s kids membership could not be processed. Please update your payment method.`
+              : 'Your membership payment could not be processed. Please update your payment method.',
             data: { screen: 'membership' },
           });
         }
@@ -326,6 +361,7 @@ Deno.serve(async (req) => {
         .from('memberships')
         .update({ status: 'cancelled' })
         .eq('stripe_subscription_id', obj.id);
+      const childName = await membershipChildName(adminClient, obj.id);
 
       const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
       if (customerId) {
@@ -340,7 +376,9 @@ Deno.serve(async (req) => {
             userId: profile.id,
             type: 'membership_renewal',
             title: 'Membership cancelled',
-            body: 'Your Switch-Kick Mafia membership has ended.',
+            body: childName
+              ? `${childName}'s Switch-Kick Mafia kids membership has ended.`
+              : 'Your Switch-Kick Mafia membership has ended.',
             data: { screen: 'membership' },
           });
         }
@@ -357,6 +395,55 @@ Deno.serve(async (req) => {
 
   return okResp();
 });
+
+/**
+ * Cancel a subscription that has no membership row and refund its first
+ * invoice. Safe to repeat (Stripe retries the webhook): an already-cancelled
+ * subscription or already-refunded charge counts as done, and refunds use an
+ * idempotency key. Returns false if either step failed.
+ */
+async function cancelAndRefundSubscription(subscriptionId: string, invoiceId: string, reason: string): Promise<boolean> {
+  console.error(`[WEBHOOK] Cancelling orphaned subscription ${subscriptionId}: ${reason}`);
+  let ok = true;
+  try {
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    if (sub.status !== 'canceled') await stripe.subscriptions.cancel(subscriptionId);
+  } catch (err) {
+    ok = false;
+    console.error(`[WEBHOOK] Failed to cancel ${subscriptionId}:`, err);
+  }
+  try {
+    // Basil API: an invoice's charges are listed under `payments`.
+    const invoice: any = await stripe.invoices.retrieve(invoiceId, { expand: ['payments'] });
+    for (const p of invoice.payments?.data ?? []) {
+      const pi = p.payment?.payment_intent;
+      const piId = typeof pi === 'string' ? pi : pi?.id;
+      if (!piId || p.status !== 'paid') continue;
+      try {
+        await stripe.refunds.create(
+          { payment_intent: piId, reason: 'duplicate' },
+          { idempotencyKey: `orphaned-membership-refund-${piId}` },
+        );
+      } catch (err: any) {
+        if (err?.code !== 'charge_already_refunded') throw err;
+      }
+    }
+  } catch (err) {
+    ok = false;
+    console.error(`[WEBHOOK] Failed to refund invoice ${invoiceId}:`, err);
+  }
+  return ok;
+}
+
+/** The child's name when the subscription is a kids membership, else null. */
+async function membershipChildName(adminClient: any, subscriptionId: string): Promise<string | null> {
+  const { data } = await adminClient
+    .from('memberships')
+    .select('children(full_name)')
+    .eq('stripe_subscription_id', subscriptionId)
+    .maybeSingle();
+  return (data as any)?.children?.full_name ?? null;
+}
 
 function okResp() {
   return new Response(JSON.stringify({ received: true }), {
