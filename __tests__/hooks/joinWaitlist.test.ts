@@ -56,6 +56,29 @@ describe('joinWaitlist (client → server RPC)', () => {
     expect(position).toBe(1);
   });
 
+  it('passes the child for a kids-class waitlist', async () => {
+    mockRpc.mockResolvedValueOnce({ data: 2, error: null });
+
+    await joinWaitlist('session-uuid-1', 'membership', 'child-uuid-1');
+
+    expect(mockRpc).toHaveBeenCalledWith('join_session_waitlist', {
+      p_session_id: 'session-uuid-1',
+      p_payment_method: 'membership',
+      p_child_id: 'child-uuid-1',
+    });
+  });
+
+  it('names the child in the duplicate-booking message', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: '23505', message: 'This child already has a booking for this class.' },
+    });
+
+    await expect(joinWaitlist('session-uuid-1', 'membership', 'child-uuid-1')).rejects.toThrow(
+      'This child already has a booking for this class.',
+    );
+  });
+
   it('does NOT read bookings table on the client to compute waitlist_position', async () => {
     // This is the regression assertion: the buggy code path was
     //   supabase.from('bookings').select('waitlist_position')...

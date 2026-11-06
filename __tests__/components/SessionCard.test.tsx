@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 import { SessionCard } from '../../components/SessionCard';
-import { ClassSessionWithDetails } from '../../types';
+import { Booking, ClassSessionWithDetails } from '../../types';
 
 // SessionCard now uses useDefaultClassLeaderName for the "Admin" fallback
 // when neither session nor template has a teacher. Stub it so render() works
@@ -40,6 +40,7 @@ const base: ClassSessionWithDetails = {
   confirmed_count: 5,
   waitlist_count: 0,
   user_booking: undefined,
+  child_bookings: [],
   effective_capacity: 20,
   effective_price: 1500,
 };
@@ -66,6 +67,7 @@ describe('SessionCard', () => {
         id: 'b1',
         session_id: 'session-1',
         student_id: 'student-1',
+        child_id: null,
         status: 'confirmed',
         payment_method: 'app',
         payment_status: 'paid',
@@ -89,6 +91,7 @@ describe('SessionCard', () => {
         id: 'b2',
         session_id: 'session-1',
         student_id: 'student-1',
+        child_id: null,
         status: 'waitlisted',
         payment_method: 'app',
         payment_status: 'pending',
@@ -112,6 +115,7 @@ describe('SessionCard', () => {
         id: 'b-claim-active',
         session_id: 'session-1',
         student_id: 'student-1',
+        child_id: null,
         status: 'waitlisted',
         payment_method: 'app',
         payment_status: 'pending',
@@ -136,6 +140,7 @@ describe('SessionCard', () => {
         id: 'b-claim-expired',
         session_id: 'session-1',
         student_id: 'student-1',
+        child_id: null,
         status: 'waitlisted',
         payment_method: 'app',
         payment_status: 'pending',
@@ -161,6 +166,7 @@ describe('SessionCard', () => {
         id: 'b-claim-press',
         session_id: 'session-1',
         student_id: 'student-1',
+        child_id: null,
         status: 'waitlisted',
         payment_method: 'app',
         payment_status: 'pending',
@@ -211,6 +217,7 @@ describe('SessionCard', () => {
         id: 'b3',
         session_id: 'session-1',
         student_id: 'student-1',
+        child_id: null,
         status: 'confirmed',
         payment_method: 'app',
         payment_status: 'paid',
@@ -242,5 +249,58 @@ describe('SessionCard', () => {
     render(<SessionCard session={base} onBook={onBook} onCancel={noop} onClaim={noop} />);
     fireEvent.press(screen.getByText('Book'));
     expect(onBook).toHaveBeenCalledTimes(1);
+  });
+
+  describe('kids classes', () => {
+    const kids: ClassSessionWithDetails = {
+      ...base,
+      class_templates: { ...base.class_templates, name: 'Kids Muay Thai', level: 'kids' },
+    };
+    const childBooking = (over: Partial<Booking>): Booking => ({
+      id: 'b-kid', session_id: 'session-1', student_id: 'parent-1', child_id: 'child-1',
+      status: 'confirmed', payment_method: 'membership', payment_status: 'paid',
+      stripe_payment_intent_id: null, waitlist_position: null, claim_window_started_at: null,
+      booked_at: '2026-01-01T00:00:00Z', cancelled_at: null, ...over,
+    });
+
+    it('shows membership-only pricing instead of a class price', () => {
+      render(<SessionCard session={kids} onBook={noop} onCancel={noop} onClaim={noop} />);
+      expect(screen.getByText('Kids membership')).toBeTruthy();
+      expect(screen.queryByText('£15.00')).toBeNull();
+    });
+
+    it('opens the child picker from Book', () => {
+      const onBook = jest.fn();
+      render(<SessionCard session={kids} onBook={onBook} onCancel={noop} onClaim={noop} />);
+      fireEvent.press(screen.getByText('Book'));
+      expect(onBook).toHaveBeenCalled();
+    });
+
+    it('names booked children and offers Manage', () => {
+      render(
+        <SessionCard
+          session={{ ...kids, child_bookings: [childBooking({})] }}
+          onBook={noop} onCancel={noop} onClaim={noop}
+          childNames={{ 'child-1': 'Sam' }}
+        />,
+      );
+      expect(screen.getByText('Booked: Sam')).toBeTruthy();
+      expect(screen.getByText('Manage')).toBeTruthy();
+    });
+
+    it('flags an open claim for a waitlisted child', () => {
+      const booking = childBooking({
+        status: 'waitlisted', waitlist_position: 1, claim_window_started_at: new Date().toISOString(),
+      });
+      render(
+        <SessionCard
+          session={{ ...kids, child_bookings: [booking] }}
+          onBook={noop} onCancel={noop} onClaim={noop}
+          childNames={{ 'child-1': 'Sam' }}
+        />,
+      );
+      expect(screen.getByText('A spot opened up for Sam!')).toBeTruthy();
+      expect(screen.getByText('Claim Spot')).toBeTruthy();
+    });
   });
 });

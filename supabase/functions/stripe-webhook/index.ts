@@ -209,12 +209,24 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ received: true, diag }), { headers: { 'Content-Type': 'application/json' } });
       }
 
-      const tier = priceId === Deno.env.get('STRIPE_PRICE_UNLIMITED') ? 'unlimited' : 'two_per_week';
+      const tier = priceId === Deno.env.get('STRIPE_PRICE_UNLIMITED')
+        ? 'unlimited'
+        : priceId === Deno.env.get('STRIPE_PRICE_KIDS')
+          ? 'kids'
+          : 'two_per_week';
       diag.tier = tier;
+
+      // create-subscription stamps the child on kids subscriptions
+      const childId = tier === 'kids' ? (subscription.metadata?.child_id || null) : null;
+      diag.childId = childId;
+      if (tier === 'kids' && !childId) {
+        throw new Error(`Kids subscription ${subscriptionId} has no child_id metadata`);
+      }
 
       if (billingReason === 'subscription_create') {
         const { data: upsertData, error: upsertErr } = await adminClient.from('memberships').upsert({
           student_id: profile.id,
+          child_id: childId,
           tier,
           stripe_subscription_id: subscriptionId,
           stripe_price_id: priceId,
@@ -253,11 +265,13 @@ Deno.serve(async (req) => {
     try {
       const rawSub = obj.subscription ?? obj.parent?.subscription_details?.subscription;
       const subId = typeof rawSub === 'string' ? rawSub : rawSub?.id;
+      let childName: string | null = null;
       if (subId) {
         await adminClient
           .from('memberships')
           .update({ status: 'past_due' })
           .eq('stripe_subscription_id', subId);
+        childName = await membershipChildName(adminClient, subId);
       }
 
       const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
@@ -273,7 +287,9 @@ Deno.serve(async (req) => {
             userId: profile.id,
             type: 'membership_renewal',
             title: 'Membership payment failed',
-            body: 'Your membership payment could not be processed. Please update your payment method.',
+            body: childName
+              ? `The payment for ${childName}'s kids membership could not be processed. Please update your payment method.`
+              : 'Your membership payment could not be processed. Please update your payment method.',
             data: { screen: 'membership' },
           });
         }
@@ -326,6 +342,7 @@ Deno.serve(async (req) => {
         .from('memberships')
         .update({ status: 'cancelled' })
         .eq('stripe_subscription_id', obj.id);
+      const childName = await membershipChildName(adminClient, obj.id);
 
       const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
       if (customerId) {
@@ -340,7 +357,9 @@ Deno.serve(async (req) => {
             userId: profile.id,
             type: 'membership_renewal',
             title: 'Membership cancelled',
-            body: 'Your Switch-Kick Mafia membership has ended.',
+            body: childName
+              ? `${childName}'s Switch-Kick Mafia kids membership has ended.`
+              : 'Your Switch-Kick Mafia membership has ended.',
             data: { screen: 'membership' },
           });
         }
@@ -357,6 +376,16 @@ Deno.serve(async (req) => {
 
   return okResp();
 });
+
+/** The child's name when the subscription is a kids membership, else null. */
+async function membershipChildName(adminClient: any, subscriptionId: string): Promise<string | null> {
+  const { data } = await adminClient
+    .from('memberships')
+    .select('children(full_name)')
+    .eq('stripe_subscription_id', subscriptionId)
+    .maybeSingle();
+  return (data as any)?.children?.full_name ?? null;
+}
 
 function okResp() {
   return new Response(JSON.stringify({ received: true }), {

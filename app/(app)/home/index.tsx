@@ -20,6 +20,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ClassCardShell, SessionCard } from '@/components/SessionCard';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
+import { KidsBookingSheet } from '@/components/KidsBookingSheet';
+import { useKidsClassActions } from '@/hooks/useKidsClassActions';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useBookSession, useCancelBooking, useJoinWaitlist, useClaimWaitlistSpot } from '@/hooks/useBookSession';
@@ -79,6 +81,22 @@ export default function HomeScreen() {
   const { data: blockStatus } = useBookingBlocked();
   const isBlockedFromBooking = !isAdmin && (blockStatus?.blocked ?? false);
   const lateCancelCount = blockStatus?.count ?? 0;
+  const kidsActions = useKidsClassActions({ isBlockedFromBooking, lateCancelCount });
+  const childNames = Object.fromEntries((kidsActions.children ?? []).map((c) => [c.id, c.full_name]));
+  // Kids classes are booked per child. A tap goes straight to the child when
+  // there's only one it could mean; otherwise the "who is this for?" sheet
+  // opens. Held by id so the sheet shows fresh bookings after each refetch.
+  const [kidsSessionId, setKidsSessionId] = useState<string | null>(null);
+  const kidsSession = allSessions?.find((s) => s.id === kidsSessionId) ?? null;
+
+  function handleKidsClassPress(session: ClassSessionWithDetails) {
+    const child = kidsActions.soleChild(session);
+    if (child) {
+      kidsActions.act(session, child, { announce: (kidsActions.children?.length ?? 0) > 1 });
+    } else {
+      setKidsSessionId(session.id);
+    }
+  }
   const bookSession = useBookSession();
   const cancelBooking = useCancelBooking();
   const joinWaitlist = useJoinWaitlist();
@@ -230,6 +248,16 @@ export default function HomeScreen() {
             )}
             {isAdmin ? (
               <AdminSessionCard session={item} />
+            ) : item.class_templates?.level === 'kids' ? (
+              <SessionCard
+                session={item}
+                onBook={() => requireAuth(() => handleKidsClassPress(item))}
+                onCancel={() => requireAuth(() => handleKidsClassPress(item))}
+                onClaim={() => requireAuth(() => handleKidsClassPress(item))}
+                isMutating={kidsActions.isMutating}
+                childNames={childNames}
+                actionLabel={kidsActions.soleChildLabel(item)}
+              />
             ) : (
               <SessionCard
                 session={item}
@@ -252,6 +280,14 @@ export default function HomeScreen() {
         }
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
+
+      {!isAdmin && (
+        <KidsBookingSheet
+          session={kidsSession}
+          onDismiss={() => setKidsSessionId(null)}
+          actions={kidsActions}
+        />
+      )}
 
       {/* Payment method modal — used for both initial book and waitlist claim */}
       {!isAdmin && (

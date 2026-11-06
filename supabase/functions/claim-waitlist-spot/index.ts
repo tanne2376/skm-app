@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
 
   const { data: booking } = await adminClient
     .from('bookings')
-    .select('id, student_id, session_id, status, claim_window_started_at, waitlist_position')
+    .select('id, student_id, child_id, session_id, status, claim_window_started_at, waitlist_position')
     .eq('id', bookingId)
     .single();
 
@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
   // Verify the session still has open capacity
   const { data: session } = await adminClient
     .from('class_sessions')
-    .select('*, class_templates(capacity, name)')
+    .select('*, class_templates(capacity, name, level)')
     .eq('id', booking.session_id)
     .single();
   if (!session) return errorResponse('Session not found.', 404);
@@ -106,6 +106,13 @@ Deno.serve(async (req) => {
   }
 
   const sessionName = (session as any).class_templates?.name ?? 'Class';
+
+  // Kids classes are membership-only, with the child's own kids membership
+  // (checked below); the bookings trigger enforces the same.
+  const isKidsClass = (session as any).class_templates?.level === 'kids';
+  if (isKidsClass && paymentMethod !== 'membership') {
+    return errorResponse('Kids classes are only available with a kids membership.', 403);
+  }
 
   // ─── CASH ─────────────────────────────────────────────────────────────────
   if (paymentMethod === 'cash') {
@@ -134,12 +141,23 @@ Deno.serve(async (req) => {
 
     const { data: membership } = await adminClient
       .from('memberships')
-      .select('id, tier, payment_method, payment_status')
+      .select('id, tier, child_id, payment_method, payment_status')
       .eq('id', membershipId)
       .eq('student_id', user.id)
-      .eq('status', 'active')
+      // cancelling memberships stay usable until period end, as in book-with-membership
+      .in('status', ['active', 'cancelling'])
       .single();
     if (!membership) return errorResponse('Membership not found or inactive.', 403);
+    if (isKidsClass
+      ? membership.tier !== 'kids' || membership.child_id !== booking.child_id
+      : membership.tier === 'kids') {
+      return errorResponse(
+        isKidsClass
+          ? 'Kids classes need an active kids membership for this child.'
+          : 'Kids memberships only cover kids classes.',
+        403,
+      );
+    }
 
     // Cash-pending memberships past their 72hr grace can't book
     if (membership.payment_method === 'cash' && membership.payment_status === 'pending') {
