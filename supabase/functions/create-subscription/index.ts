@@ -77,6 +77,22 @@ Deno.serve(async (req) => {
       .eq('id', user.id);
   }
 
+  // A paid subscription only gets its membership row when the webhook lands.
+  // Until then the check above can't see it, so check Stripe too: a second
+  // purchase for the same person would be charged but then rejected.
+  if (profile?.stripe_customer_id) {
+    const adultPrices = [Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK'), Deno.env.get('STRIPE_PRICE_UNLIMITED')];
+    const subs = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 100 });
+    const inFlight = subs.data.some((sub: any) =>
+      ['active', 'trialing', 'past_due'].includes(sub.status)
+      && (childId
+        ? sub.metadata?.child_id === childId
+        : !sub.metadata?.child_id && adultPrices.includes(sub.items.data[0]?.price?.id)));
+    if (inFlight) {
+      return errorResponse('Your payment for this membership is still being processed. Please check back in a minute.', 409);
+    }
+  }
+
   const PRICES = {
     two_per_week: { priceId: Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK'), amount: 8000, label: '2x/Week' },
     unlimited: { priceId: Deno.env.get('STRIPE_PRICE_UNLIMITED'), amount: 10000, label: 'Unlimited' },

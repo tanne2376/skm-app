@@ -237,6 +237,21 @@ Deno.serve(async (req) => {
 
         diag.upsertData = upsertData;
         diag.upsertErr = upsertErr?.message ?? null;
+
+        if (upsertErr) {
+          // 23505: this person already has a live membership (a duplicate
+          // purchase). 23503: the child was removed during checkout. Either
+          // way the subscription can never become a membership, so stop it
+          // billing and refund the first charge rather than leave it orphaned.
+          if (upsertErr.code === '23505' || upsertErr.code === '23503') {
+            await cancelAndRefundSubscription(subscriptionId, obj.id, upsertErr.message);
+            diag.exit = 'orphaned_subscription_cancelled';
+            console.error(`[WEBHOOK] invoice handler diag:`, JSON.stringify(diag));
+            return new Response(JSON.stringify({ received: true, diag }), { headers: { 'Content-Type': 'application/json' } });
+          }
+          // Anything else may be transient: fail so Stripe retries.
+          throw new Error(`Membership upsert failed for ${subscriptionId}: ${upsertErr.message}`);
+        }
       } else {
         const { data: updateData, error: updateErr } = await adminClient
           .from('memberships')
@@ -376,6 +391,32 @@ Deno.serve(async (req) => {
 
   return okResp();
 });
+
+/**
+ * Cancel a subscription that has no membership row and refund its first
+ * invoice. Best effort: failures are logged loudly for a manual refund.
+ */
+async function cancelAndRefundSubscription(subscriptionId: string, invoiceId: string, reason: string) {
+  console.error(`[WEBHOOK] Cancelling orphaned subscription ${subscriptionId}: ${reason}`);
+  try {
+    await stripe.subscriptions.cancel(subscriptionId);
+  } catch (err) {
+    console.error(`[WEBHOOK] Failed to cancel ${subscriptionId} — cancel it manually in Stripe:`, err);
+  }
+  try {
+    // Basil API: an invoice's charges are listed under `payments`.
+    const invoice: any = await stripe.invoices.retrieve(invoiceId, { expand: ['payments'] });
+    for (const p of invoice.payments?.data ?? []) {
+      const pi = p.payment?.payment_intent;
+      const piId = typeof pi === 'string' ? pi : pi?.id;
+      if (piId && p.status === 'paid') {
+        await stripe.refunds.create({ payment_intent: piId, reason: 'duplicate' });
+      }
+    }
+  } catch (err) {
+    console.error(`[WEBHOOK] Failed to refund invoice ${invoiceId} — refund it manually in Stripe:`, err);
+  }
+}
 
 /** The child's name when the subscription is a kids membership, else null. */
 async function membershipChildName(adminClient: any, subscriptionId: string): Promise<string | null> {

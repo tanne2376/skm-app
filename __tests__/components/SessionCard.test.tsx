@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { act, render, screen, fireEvent } from '@testing-library/react-native';
 import { SessionCard } from '../../components/SessionCard';
 import { Booking, ClassSessionWithDetails } from '../../types';
 
@@ -301,6 +301,36 @@ describe('SessionCard', () => {
       );
       expect(screen.getByText('A spot opened up for Sam!')).toBeTruthy();
       expect(screen.getByText('Claim Spot')).toBeTruthy();
+    });
+
+    it('drops the claim once its window expires, without new props', () => {
+      jest.useFakeTimers({ now: new Date('2099-01-01T12:00:00Z') });
+      try {
+        const booking = childBooking({
+          status: 'waitlisted', waitlist_position: 1, claim_window_started_at: new Date().toISOString(),
+        });
+        // Mirrors soleChildLabel for a single child: recomputed on each render.
+        const label = () =>
+          Date.now() - new Date(booking.claim_window_started_at!).getTime() < 60 * 60 * 1000
+            ? 'Claim Spot'
+            : 'Leave Waitlist';
+        render(
+          <SessionCard
+            session={{ ...kids, child_bookings: [booking] }}
+            onBook={noop} onCancel={noop} onClaim={noop}
+            childNames={{ 'child-1': 'Sam' }}
+            actionLabel={label}
+          />,
+        );
+        expect(screen.getByText('Claim Spot')).toBeTruthy();
+
+        act(() => { jest.advanceTimersByTime(61 * 60 * 1000); });
+
+        expect(screen.getByText('Leave Waitlist')).toBeTruthy();
+        expect(screen.getByText('Waitlist: Sam (#1)')).toBeTruthy();
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });
