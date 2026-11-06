@@ -243,8 +243,12 @@ Deno.serve(async (req) => {
           // purchase). 23503: the child was removed during checkout. Either
           // way the subscription can never become a membership, so stop it
           // billing and refund the first charge rather than leave it orphaned.
+          // On a retry the upsert fails the same way and cleanup runs again.
           if (upsertErr.code === '23505' || upsertErr.code === '23503') {
-            await cancelAndRefundSubscription(subscriptionId, obj.id, upsertErr.message);
+            if (!(await cancelAndRefundSubscription(subscriptionId, obj.id, upsertErr.message))) {
+              // Fail so Stripe retries; the cleanup is safe to repeat.
+              throw new Error(`Cleanup of orphaned subscription ${subscriptionId} failed`);
+            }
             diag.exit = 'orphaned_subscription_cancelled';
             console.error(`[WEBHOOK] invoice handler diag:`, JSON.stringify(diag));
             return new Response(JSON.stringify({ received: true, diag }), { headers: { 'Content-Type': 'application/json' } });
@@ -394,14 +398,19 @@ Deno.serve(async (req) => {
 
 /**
  * Cancel a subscription that has no membership row and refund its first
- * invoice. Best effort: failures are logged loudly for a manual refund.
+ * invoice. Safe to repeat (Stripe retries the webhook): an already-cancelled
+ * subscription or already-refunded charge counts as done, and refunds use an
+ * idempotency key. Returns false if either step failed.
  */
-async function cancelAndRefundSubscription(subscriptionId: string, invoiceId: string, reason: string) {
+async function cancelAndRefundSubscription(subscriptionId: string, invoiceId: string, reason: string): Promise<boolean> {
   console.error(`[WEBHOOK] Cancelling orphaned subscription ${subscriptionId}: ${reason}`);
+  let ok = true;
   try {
-    await stripe.subscriptions.cancel(subscriptionId);
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    if (sub.status !== 'canceled') await stripe.subscriptions.cancel(subscriptionId);
   } catch (err) {
-    console.error(`[WEBHOOK] Failed to cancel ${subscriptionId} — cancel it manually in Stripe:`, err);
+    ok = false;
+    console.error(`[WEBHOOK] Failed to cancel ${subscriptionId}:`, err);
   }
   try {
     // Basil API: an invoice's charges are listed under `payments`.
@@ -409,13 +418,21 @@ async function cancelAndRefundSubscription(subscriptionId: string, invoiceId: st
     for (const p of invoice.payments?.data ?? []) {
       const pi = p.payment?.payment_intent;
       const piId = typeof pi === 'string' ? pi : pi?.id;
-      if (piId && p.status === 'paid') {
-        await stripe.refunds.create({ payment_intent: piId, reason: 'duplicate' });
+      if (!piId || p.status !== 'paid') continue;
+      try {
+        await stripe.refunds.create(
+          { payment_intent: piId, reason: 'duplicate' },
+          { idempotencyKey: `orphaned-membership-refund-${piId}` },
+        );
+      } catch (err: any) {
+        if (err?.code !== 'charge_already_refunded') throw err;
       }
     }
   } catch (err) {
-    console.error(`[WEBHOOK] Failed to refund invoice ${invoiceId} — refund it manually in Stripe:`, err);
+    ok = false;
+    console.error(`[WEBHOOK] Failed to refund invoice ${invoiceId}:`, err);
   }
+  return ok;
 }
 
 /** The child's name when the subscription is a kids membership, else null. */
