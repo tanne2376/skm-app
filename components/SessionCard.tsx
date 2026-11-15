@@ -43,11 +43,13 @@ export function levelButtonStyle(level: ClassLevel | undefined): ViewStyle {
  * and the admin home card.
  */
 export function ClassCardShell({
-  title, level, cancelled = false, showTitle = true, style, children,
+  title, level, cancelled = false, showTitle = true, badge, style, children,
 }: {
   title: string;
   /** false when the caller lays out the title itself (e.g. inline with the time). */
   showTitle?: boolean;
+  /** Shown in the card's top-right corner, beside the title (e.g. booking status). */
+  badge?: React.ReactNode;
   level: ClassLevel | undefined;
   cancelled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -57,7 +59,12 @@ export function ClassCardShell({
   return (
     <Card style={[styles.card, { borderTopColor: cancelled ? COLORS.grey[700] : levelStyle.band }, style]}>
       <View style={styles.body}>
-        {showTitle && <Text style={styles.className} numberOfLines={2}>{title}</Text>}
+        {(showTitle || badge) && (
+          <View style={styles.titleRow}>
+            {showTitle && <Text style={[styles.className, styles.flex]} numberOfLines={2}>{title}</Text>}
+            {badge && <View style={styles.titleBadge}>{badge}</View>}
+          </View>
+        )}
         {children}
       </View>
       <View style={[styles.footer, { backgroundColor: levelStyle.tint }]}>
@@ -175,7 +182,12 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
   }
 
   return (
-    <ClassCardShell title={title} level={level} style={isPast && styles.pastCard}>
+    <ClassCardShell
+      title={title}
+      level={level}
+      style={isPast && styles.pastCard}
+      badge={userBooking && <BookingStatusBadge status={userBooking.status} />}
+    >
       <View style={styles.row}>
         <View style={styles.flex}>
           <Text style={styles.time}>{timeStr}</Text>
@@ -191,7 +203,6 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
             </Text>
           )}
           {isFull && !userBooking && <Badge label="Full" variant="error" />}
-          {userBooking && <BookingStatusBadge status={userBooking.status} />}
 
           {/* Primary action sits beside the details to keep the card short */}
           {!isPast && !userBooking && !isBlockedFromBooking && (
@@ -269,6 +280,9 @@ export function SessionCard({ session, onBook, onCancel, onClaim, isMutating = f
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  // Pin to the top-right corner even when there's no title beside it.
+  titleBadge: { marginLeft: 'auto' },
   rightColumn: { alignItems: 'flex-end', justifyContent: 'center', gap: 6, alignSelf: 'center' },
   notice: { marginTop: 10 },
   claimActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
