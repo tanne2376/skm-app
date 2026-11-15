@@ -5,7 +5,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'Switch-Kick Mafia',
   slug: 'switch-kick-mafia',
   owner: 'bt439',
-  version: '1.0.0',
+  version: '1.1.0',
   // Scope OTA updates to binaries with matching native code (e.g. react-native-svg).
   runtimeVersion: { policy: 'fingerprint' },
   orientation: 'portrait',
@@ -16,7 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.switchkickmafia.app',
-    buildNumber: '4',
+    buildNumber: '7',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription: 'Used to scan your payment card when adding it to checkout.',

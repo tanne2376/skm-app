@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Alert, TouchableOpacity, Linking } from 'react-native';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants';
@@ -13,6 +14,9 @@ import { supabase } from '@/lib/supabase';
 
 const PRIVACY_URL = 'https://tanne2376.github.io/skm-app/privacy.html';
 const TERMS_URL = 'https://tanne2376.github.io/skm-app/terms.html';
+
+// From app.config.ts, so the About card follows each release.
+const APP_VERSION = Constants.expoConfig?.version;
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -93,7 +97,7 @@ export default function SettingsScreen() {
 
           <Card>
             <Text style={styles.sectionTitle}>About</Text>
-            <Text style={styles.sectionDesc}>Switch-Kick Mafia · v1.0.0</Text>
+            <Text style={styles.sectionDesc}>Switch-Kick Mafia{APP_VERSION ? ` · v${APP_VERSION}` : ''}</Text>
             <Text style={[styles.sectionDesc, { marginTop: 4 }]}>Built for SKM</Text>
           </Card>
         </ScrollView>
@@ -219,7 +223,7 @@ export default function SettingsScreen() {
         {/* App info */}
         <Card>
           <Text style={styles.sectionTitle}>About</Text>
-          <Text style={styles.sectionDesc}>Switch-Kick Mafia · v1.0.0</Text>
+          <Text style={styles.sectionDesc}>Switch-Kick Mafia{APP_VERSION ? ` · v${APP_VERSION}` : ''}</Text>
           <Text style={[styles.sectionDesc, { marginTop: 4 }]}>Built for SKM</Text>
         </Card>
 
