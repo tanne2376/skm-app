@@ -12,8 +12,9 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { UserAvatarButton, UserDetailsSheet } from '@/components/UserDetailsSheet';
-import { supabase } from '@/lib/supabase';
+import { supabase, invokeFunction } from '@/lib/supabase';
 import { formatGBP } from '@/lib/stripe';
+import { toISODate } from '@/lib/waiver';
 import { ClassLevel, ClassTemplate, Profile } from '@/types';
 
 type ManageTab = 'timetable' | 'users';
@@ -218,6 +219,12 @@ function TimetableTab() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
+  // Soft-deletes the template, then clears out its future sessions so they
+  // don't linger on the timetable (students can't read inactive templates,
+  // so orphaned sessions would render with a null template). Sessions with
+  // no bookings are deleted outright; any with booking history go through
+  // cancel-class-session for refunds, slot release and notifications
+  // (bookings.session_id is ON DELETE RESTRICT, so they can't be deleted).
   const deleteTemplate = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -225,9 +232,38 @@ function TimetableTab() {
         .update({ is_active: false })
         .eq('id', id);
       if (error) throw error;
+
+      const { data: sessions, error: sessErr } = await supabase
+        .from('class_sessions')
+        .select('id, bookings (id)')
+        .eq('template_id', id)
+        .eq('is_cancelled', false)
+        .gte('session_date', toISODate(new Date()));
+      if (sessErr) throw sessErr;
+
+      const unbooked = (sessions ?? []).filter(s => s.bookings.length === 0).map(s => s.id);
+      const booked = (sessions ?? []).filter(s => s.bookings.length > 0).map(s => s.id);
+
+      if (unbooked.length > 0) {
+        const { error: delErr } = await supabase.from('class_sessions').delete().in('id', unbooked);
+        if (delErr) throw delErr;
+      }
+
+      let failed = 0;
+      for (const sessionId of booked) {
+        const { error: cancelErr } = await invokeFunction('cancel-class-session', {
+          sessionId,
+          reason: 'Class removed from the timetable',
+        });
+        if (cancelErr) failed++;
+      }
+      if (failed > 0) {
+        throw new Error(`Class removed, but ${failed} upcoming session(s) couldn't be cancelled. Cancel them from Home.`);
+      }
     },
     onSuccess: () => {
       invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
       setShowTeacherPicker(false);
       setEditingTemplate(null);
     },
@@ -401,7 +437,7 @@ function TimetableTab() {
                 variant="danger"
                 size="md"
                 onPress={() =>
-                  Alert.alert('Delete Class', `Remove "${editingTemplate?.name}" from the timetable?`, [
+                  Alert.alert('Delete Class', `Remove "${editingTemplate?.name}" from the timetable? Upcoming sessions will be removed, and anyone booked will be refunded and notified.`, [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Delete', style: 'destructive', onPress: () => deleteTemplate.mutate(editingTemplate!.id) },
                   ])
