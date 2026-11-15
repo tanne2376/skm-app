@@ -33,11 +33,7 @@ interface PreparedCardPayment {
   paymentIntentId: string | null;
 }
 
-const PAYMENT_INTERRUPTED = 'Payment was interrupted by another checkout. Please try again.';
-
 let latestPrepared: PreparedCardPayment | null = null;
-// initPaymentSheet calls must not overlap, so set-ups run one after another.
-let prepareQueue: Promise<unknown> = Promise.resolve();
 
 /**
  * Start loading the card PaymentSheet for a class (deferred-intent flow).
@@ -53,7 +49,7 @@ export function prepareClassCardPayment(session: ClassSessionWithDetails): Prepa
     ready: Promise.resolve(),
   };
 
-  prepared.ready = prepareQueue.then(async () => {
+  prepared.ready = (async () => {
     const { data, error } = await invokeFunction<{
       customerId: string; ephemeralKeySecret: string;
     }>('payment-sheet-customer');
@@ -99,8 +95,9 @@ export function prepareClassCardPayment(session: ClassSessionWithDetails): Prepa
         intentCreationCallback({ clientSecret: intent.clientSecret });
       },
     });
-  });
-  prepareQueue = prepared.ready.catch(() => {});
+  })();
+  // Callers may never await this (e.g. the user pays cash); don't report it unhandled.
+  prepared.ready.catch(() => {});
   latestPrepared = prepared;
   return prepared;
 }
@@ -171,10 +168,9 @@ export function useBookSession() {
         } catch (e) {
           // A failed set-up shouldn't stick; the next attempt starts afresh.
           if (latestPrepared === prepared) latestPrepared = null;
-          if (e instanceof Error && e.message === PAYMENT_SHEET_SUPERSEDED) throw new Error(PAYMENT_INTERRUPTED);
           throw e;
         }
-        if (!ownsPaymentSheet(prepared.ticket)) throw new Error(PAYMENT_INTERRUPTED);
+        if (!ownsPaymentSheet(prepared.ticket)) throw new Error(PAYMENT_SHEET_SUPERSEDED);
 
         const result = await openPaymentSheet();
         // Each sheet set-up is for one checkout.

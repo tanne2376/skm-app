@@ -26,6 +26,21 @@ export function ownsPaymentSheet(ticket: number): boolean {
   return ticket === sheetTicket;
 }
 
+// Native set-ups never overlap: each runs after the previous one finishes,
+// and skips itself if a newer set-up has claimed the sheet meanwhile. So an
+// in-flight set-up can't finish after, and overwrite, a newer one.
+let sheetSetupQueue: Promise<unknown> = Promise.resolve();
+
+function runSheetSetup(ticket: number, setup: () => ReturnType<typeof initPaymentSheet>): Promise<void> {
+  const run = sheetSetupQueue.then(async () => {
+    if (!ownsPaymentSheet(ticket)) throw new Error(PAYMENT_SHEET_SUPERSEDED);
+    const { error } = await setup();
+    if (error) throw new Error(error.message);
+  });
+  sheetSetupQueue = run.catch(() => {});
+  return run;
+}
+
 // Shared PaymentSheet look and wallet setup.
 function sheetOptions(params: { currency?: string; merchantDisplayName?: string }) {
   return {
@@ -66,22 +81,17 @@ function sheetOptions(params: { currency?: string; merchantDisplayName?: string 
   };
 }
 
-export async function initializePaymentSheet(params: PaymentSheetParams): Promise<void> {
-  claimPaymentSheet();
-  const { error } = await initPaymentSheet({
+export function initializePaymentSheet(params: PaymentSheetParams): Promise<void> {
+  return runSheetSetup(claimPaymentSheet(), () => initPaymentSheet({
     ...sheetOptions(params),
     paymentIntentClientSecret: params.paymentIntentClientSecret,
     customerEphemeralKeySecret: params.customerEphemeralKeySecret,
     customerId: params.customerId,
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  }));
 }
 
 export interface DeferredPaymentSheetParams {
-  /** From claimPaymentSheet(); the set-up is skipped if a newer one has started. */
+  /** From claimPaymentSheet(); the set-up is skipped if a newer one has claimed the sheet. */
   ticket: number;
   customerEphemeralKeySecret: string;
   customerId: string;
@@ -96,9 +106,8 @@ export interface DeferredPaymentSheetParams {
  * Set up PaymentSheet before a PaymentIntent exists (Stripe's deferred-intent
  * flow), so it can open instantly. The intent is created in `confirmHandler`.
  */
-export async function initializeDeferredPaymentSheet(params: DeferredPaymentSheetParams): Promise<void> {
-  if (!ownsPaymentSheet(params.ticket)) throw new Error(PAYMENT_SHEET_SUPERSEDED);
-  const { error } = await initPaymentSheet({
+export function initializeDeferredPaymentSheet(params: DeferredPaymentSheetParams): Promise<void> {
+  return runSheetSetup(params.ticket, () => initPaymentSheet({
     ...sheetOptions(params),
     customerEphemeralKeySecret: params.customerEphemeralKeySecret,
     customerId: params.customerId,
@@ -106,15 +115,11 @@ export async function initializeDeferredPaymentSheet(params: DeferredPaymentShee
       mode: { amount: params.amount, currencyCode: (params.currency ?? 'gbp').toUpperCase() },
       confirmHandler: params.confirmHandler,
     },
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  }));
 }
 
 export const PAYMENT_CANCELED = '__payment_canceled__';
-export const PAYMENT_SHEET_SUPERSEDED = '__payment_sheet_superseded__';
+export const PAYMENT_SHEET_SUPERSEDED = 'Payment was interrupted by another checkout. Please try again.';
 
 export async function openPaymentSheet(): Promise<{ success: boolean; canceled?: boolean; error?: string }> {
   const { error } = await presentPaymentSheet();
