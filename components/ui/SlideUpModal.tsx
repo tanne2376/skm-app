@@ -8,13 +8,22 @@ interface SlideUpModalProps {
   children: React.ReactNode;
   maxHeight?: number | `${number}%`;
   fullScreen?: boolean;
+  /**
+   * Called once the sheet has fully closed and its native modal is gone.
+   * Present anything else modal (e.g. Stripe's PaymentSheet) from here: on
+   * iOS, a view presented while this modal is still closing gets dismissed
+   * along with it.
+   */
+  onClosed?: () => void;
 }
 
-export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScreen }: SlideUpModalProps) {
+export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScreen, onClosed }: SlideUpModalProps) {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetY = useRef(new Animated.Value(600)).current;
   // Keep the Modal mounted until the close animation finishes
   const [mounted, setMounted] = useState(visible);
+  const onClosedRef = useRef(onClosed);
+  onClosedRef.current = onClosed;
 
   useEffect(() => {
     if (visible) {
@@ -38,13 +47,22 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
           toValue: 600, duration: 240, useNativeDriver: true,
         }),
       ]).start(({ finished }) => {
-        if (finished) setMounted(false);
+        if (!finished) return;
+        setMounted(false);
+        // iOS reports this from the Modal's onDismiss, after the native dismissal.
+        if (Platform.OS !== 'ios') onClosedRef.current?.();
       });
     }
   }, [visible]);
 
   return (
-    <Modal visible={mounted} animationType="none" transparent onRequestClose={onDismiss}>
+    <Modal
+      visible={mounted}
+      animationType="none"
+      transparent
+      onRequestClose={onDismiss}
+      onDismiss={Platform.OS === 'ios' ? () => onClosedRef.current?.() : undefined}
+    >
       {/* Fading backdrop — separate from the sheet */}
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]}>
         <TouchableOpacity style={{ flex: 1 }} onPress={onDismiss} activeOpacity={1} />

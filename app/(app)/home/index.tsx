@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -106,6 +106,9 @@ export default function HomeScreen() {
   // When set, the payment-method modal routes the selection to the
   // claim flow rather than the normal book flow.
   const [claimingSession, setClaimingSession] = useState<ClassSessionWithDetails | null>(null);
+  // The chosen payment, run once the payment-method modal has fully closed
+  // (Stripe's sheet can't open over a closing modal on iOS).
+  const pendingPaymentAction = useRef<(() => void) | null>(null);
 
   useRealtimeInvalidate('home-bookings', 'bookings', undefined, HOME_BOOKINGS_QUERY_KEY);
 
@@ -146,6 +149,7 @@ export default function HomeScreen() {
     // Show payment options (card / Apple Pay / cash), loading the card sheet
     // meanwhile so it opens instantly if they pick card.
     prepareClassCardPayment(session);
+    pendingPaymentAction.current = null;
     setSelectedSession(session);
   }
 
@@ -155,7 +159,7 @@ export default function HomeScreen() {
       const booking = claimingSession.user_booking;
       const target = claimingSession;
       setClaimingSession(null);
-      claimSpot.mutate({
+      pendingPaymentAction.current = () => claimSpot.mutate({
         bookingId: booking.id,
         paymentMethod: method,
         membershipId: method === 'membership' ? membership?.id : undefined,
@@ -164,8 +168,15 @@ export default function HomeScreen() {
       return;
     }
     if (!selectedSession) return;
+    const session = selectedSession;
     setSelectedSession(null);
-    bookSession.mutate({ session: selectedSession, paymentMethod: method });
+    pendingPaymentAction.current = () => bookSession.mutate({ session, paymentMethod: method });
+  }
+
+  function handlePaymentModalClosed() {
+    const action = pendingPaymentAction.current;
+    pendingPaymentAction.current = null;
+    action?.();
   }
 
   function handleClaim(session: ClassSessionWithDetails) {
@@ -180,6 +191,7 @@ export default function HomeScreen() {
       });
       return;
     }
+    pendingPaymentAction.current = null;
     setClaimingSession(session);
   }
 
@@ -296,6 +308,7 @@ export default function HomeScreen() {
         <SlideUpModal
           visible={!!selectedSession || !!claimingSession}
           onDismiss={() => { setSelectedSession(null); setClaimingSession(null); }}
+          onClosed={handlePaymentModalClosed}
         >
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
