@@ -110,6 +110,7 @@ Deno.serve(async (req) => {
 
   if (bookingError) {
     if (bookingError.code === '23505') return errorResponse('Already booked for this class.', 409);
+    if (bookingError.hint === 'class_full') return errorResponse('Class is full', 409);
     if (bookingError.hint === 'waiver_required' || bookingError.hint === 'kids_membership_required') {
       return errorResponse(bookingError.message, 403);
     }

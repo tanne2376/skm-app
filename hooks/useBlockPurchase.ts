@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { invokeFunction, supabase } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
+import { presentIntentPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
 import { useAuth } from './useAuth';
 
 async function waitForActiveBlock(blockId: string, maxAttempts = 8): Promise<void> {
@@ -59,15 +59,13 @@ export function useCreateStripeBlockPurchase() {
         .eq('id', templateId)
         .single();
 
-      await initializePaymentSheet({
+      const result = await presentIntentPaymentSheet({
         paymentIntentClientSecret: data!.clientSecret,
         customerEphemeralKeySecret: data!.ephemeralKeySecret,
         customerId: data!.customerId,
         amount: tpl?.price_pence ?? 0,
         merchantDisplayName: 'Switch-Kick Mafia',
       });
-
-      const result = await openPaymentSheet();
       if (!result.success) {
         // Server has already created the pending_stripe row; release it so
         // the 15-minute pending guard doesn't block a retry.

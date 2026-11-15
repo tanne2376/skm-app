@@ -1,6 +1,7 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { getOrCreateStripeCustomer } from '../_shared/customer.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -11,7 +12,17 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const { type, id } = await req.json() as { type: 'class' | 'one_to_one'; id: string };
+  const { type, id, deferred = false, savePaymentMethod = false, expectedAmount } = await req.json() as {
+    type: 'class' | 'one_to_one';
+    id: string;
+    // Called from a deferred-intent PaymentSheet's confirmHandler: the sheet
+    // already has a customer ephemeral key (payment-sheet-customer), and
+    // card saving follows the sheet's checkbox.
+    deferred?: boolean;
+    savePaymentMethod?: boolean;
+    // The amount the sheet was set up with; the intent must match it.
+    expectedAmount?: number;
+  };
 
   const adminClient = createAdminClient();
 
@@ -20,102 +31,87 @@ Deno.serve(async (req) => {
   let description: string;
   let sessionId: string | null = null;
   let oneToOneId: string | null = null;
+  let existingCustomerId: string | null = null;
 
   if (type === 'class') {
     sessionId = id;
 
-    // Check late cancellation block
-    const { data: isBlocked, error: blockedError } = await adminClient.rpc('is_user_booking_blocked', { p_user_id: user.id });
-    if (blockedError) return errorResponse('Failed to check booking eligibility', 500);
-    if (isBlocked) {
-      return errorResponse('You are blocked from booking classes this month due to 3 or more late cancellations.', 403);
+    // Block check, price, session, kids level, capacity and saved customer in
+    // one round trip (see prepare_class_payment).
+    const { data: prep, error: prepError } = await adminClient.rpc('prepare_class_payment', {
+      p_user_id: user.id,
+      p_session_id: id,
+    });
+    if (prepError || !prep) return errorResponse('Failed to check booking eligibility', 500);
+
+    switch (prep.error) {
+      case 'blocked':
+        return errorResponse('You are blocked from booking classes this month due to 3 or more late cancellations.', 403);
+      case 'not_found':
+        return errorResponse('Session not found', 404);
+      case 'unavailable':
+        return errorResponse('Session not available', 400);
+      case 'kids':
+        return errorResponse('Kids classes are only available with a kids membership.', 403);
+      case 'full':
+        return errorResponse('Class is full', 409);
     }
 
-    // Use DB function to get effective price (handles overrides)
-    const { data: priceData } = await adminClient.rpc('get_session_price', { p_session_id: id });
-    if (!priceData) return errorResponse('Session not found', 404);
-    amountPence = priceData;
-
-    const { data: session } = await adminClient
-      .from('class_sessions')
-      .select('*, class_templates(name, level)')
-      .eq('id', id)
-      .single();
-    if (!session || session.is_cancelled) return errorResponse('Session not available', 400);
-    if ((session as any).class_templates?.level === 'kids') {
-      return errorResponse('Kids classes are only available with a kids membership.', 403);
-    }
-    description = `Class booking: ${(session as any).class_templates?.name}`;
+    amountPence = prep.price;
+    description = `Class booking: ${prep.name ?? ''}`;
+    existingCustomerId = prep.customer_id ?? null;
 
   } else {
     oneToOneId = id;
-    const { data: oto } = await adminClient
-      .from('one_to_ones')
-      .select('*, teacher:profiles!teacher_id(full_name)')
-      .eq('id', id)
-      .eq('status', 'available')
-      .single();
+    const [{ data: oto }, { data: profile }] = await Promise.all([
+      adminClient
+        .from('one_to_ones')
+        .select('*, teacher:profiles!teacher_id(full_name)')
+        .eq('id', id)
+        .eq('status', 'available')
+        .single(),
+      adminClient
+        .from('profiles')
+        .select('stripe_customer_id')
+        .eq('id', user.id)
+        .single(),
+    ]);
     if (!oto) return errorResponse('Session not available', 400);
     amountPence = oto.price;
     description = `1-to-1 with ${(oto as any).teacher?.full_name}`;
+    existingCustomerId = profile?.stripe_customer_id ?? null;
   }
 
-  // ── Capacity check with advisory lock (prevents race conditions) ──────────
-  if (type === 'class') {
-    const { data: lockAcquired } = await adminClient.rpc('pg_try_advisory_xact_lock', {
-      key: parseInt(sessionId!.replace(/-/g, '').slice(0, 9), 16) % 2147483647,
-    });
-
-    const { data: capacityData } = await adminClient.rpc('get_session_capacity', { p_session_id: sessionId });
-    const { data: countData } = await adminClient.rpc('get_session_booking_count', { p_session_id: sessionId });
-
-    if (countData !== null && capacityData !== null && countData >= capacityData) {
-      return errorResponse('Class is full', 409);
-    }
+  if (deferred && expectedAmount !== undefined && expectedAmount !== amountPence) {
+    return errorResponse('The price of this class has changed. Please close this and try again.', 409);
   }
 
   // ── Get or create Stripe customer ─────────────────────────────────────────
-  const { data: profile } = await adminClient
-    .from('profiles')
-    .select('stripe_customer_id')
-    .eq('id', user.id)
-    .single();
+  const customerId = await getOrCreateStripeCustomer(adminClient, user, existingCustomerId);
 
-  let customerId: string;
-  if (profile?.stripe_customer_id) {
-    customerId = profile.stripe_customer_id;
-  } else {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { supabase_user_id: user.id },
-    });
-    customerId = customer.id;
-    await adminClient
-      .from('profiles')
-      .update({ stripe_customer_id: customerId })
-      .eq('id', user.id);
-  }
-
-  // ── Create ephemeral key ───────────────────────────────────────────────────
-  const ephemeralKey = await stripe.ephemeralKeys.create(
-    { customer: customerId },
-    { apiVersion: '2025-03-31.basil' },
-  );
-
-  // ── Create PaymentIntent ───────────────────────────────────────────────────
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: amountPence,
-    currency: 'gbp',
-    customer: customerId,
-    description,
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      booking_type: type,
-      session_id: sessionId ?? '',
-      one_to_one_id: oneToOneId ?? '',
-      student_id: user.id,
-    },
-  });
+  // ── Create ephemeral key + PaymentIntent (independent, so in parallel) ────
+  const [ephemeralKey, paymentIntent] = await Promise.all([
+    deferred
+      ? null
+      : stripe.ephemeralKeys.create(
+        { customer: customerId },
+        { apiVersion: '2025-03-31.basil' },
+      ),
+    stripe.paymentIntents.create({
+      amount: amountPence,
+      currency: 'gbp',
+      customer: customerId,
+      description,
+      automatic_payment_methods: { enabled: true },
+      ...(deferred && savePaymentMethod && { setup_future_usage: 'off_session' as const }),
+      metadata: {
+        booking_type: type,
+        session_id: sessionId ?? '',
+        one_to_one_id: oneToOneId ?? '',
+        student_id: user.id,
+      },
+    }),
+  ]);
 
   // ── Insert pending booking ─────────────────────────────────────────────────
   if (type === 'class') {
@@ -129,8 +125,10 @@ Deno.serve(async (req) => {
     });
     if (bookingError) {
       await stripe.paymentIntents.cancel(paymentIntent.id);
-      // bookings_require_adult_waiver trigger
+      // validate_booking trigger
       if (bookingError.hint === 'waiver_required') return errorResponse(bookingError.message, 403);
+      // enforce_session_capacity trigger (lost the race for the last place)
+      if (bookingError.hint === 'class_full') return errorResponse('Class is full', 409);
       // Duplicate — already booked
       return errorResponse('You already have a booking for this class.', 409);
     }
@@ -159,6 +157,6 @@ Deno.serve(async (req) => {
   return jsonResponse({
     clientSecret: paymentIntent.client_secret,
     customerId,
-    ephemeralKeySecret: ephemeralKey.secret,
+    ...(ephemeralKey && { ephemeralKeySecret: ephemeralKey.secret }),
   });
 });

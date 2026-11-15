@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { invokeFunction, supabase } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
+import { presentIntentPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
 import { MEMBERSHIP_PRICES_PENCE } from '@/constants';
 import { MembershipTier } from '@/types';
 import { useAuth } from './useAuth';
@@ -38,15 +38,13 @@ export function useCreateSubscription() {
 
       const { clientSecret, ephemeralKeySecret, customerId } = data!;
 
-      await initializePaymentSheet({
+      const result = await presentIntentPaymentSheet({
         paymentIntentClientSecret: clientSecret,
         customerEphemeralKeySecret: ephemeralKeySecret,
         customerId,
         amount: MEMBERSHIP_PRICES_PENCE[tier],
         merchantDisplayName: 'Switch-Kick Mafia',
       });
-
-      const result = await openPaymentSheet();
       if (!result.success) throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
 
       // Wait for the Stripe webhook to create the membership row before
