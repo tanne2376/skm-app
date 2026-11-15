@@ -118,6 +118,23 @@ export function initializeDeferredPaymentSheet(params: DeferredPaymentSheetParam
   }));
 }
 
+/**
+ * Set up an intent-based PaymentSheet and present it. A set-up failure
+ * (including being superseded by another checkout) comes back as a failed
+ * result, so callers release whatever they reserved on the server on the
+ * same path as a declined or cancelled payment.
+ */
+export async function presentIntentPaymentSheet(
+  params: PaymentSheetParams,
+): Promise<{ success: boolean; canceled?: boolean; error?: string }> {
+  try {
+    await initializePaymentSheet(params);
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Could not start payment.' };
+  }
+  return openPaymentSheet();
+}
+
 export const PAYMENT_CANCELED = '__payment_canceled__';
 export const PAYMENT_SHEET_SUPERSEDED = 'Payment was interrupted by another checkout. Please try again.';
 

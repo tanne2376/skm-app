@@ -3,10 +3,10 @@ import { Alert } from 'react-native';
 import { supabase, invokeFunction } from '@/lib/supabase';
 import {
   claimPaymentSheet,
-  initializePaymentSheet,
   initializeDeferredPaymentSheet,
   openPaymentSheet,
   ownsPaymentSheet,
+  presentIntentPaymentSheet,
   PAYMENT_CANCELED,
   PAYMENT_SHEET_SUPERSEDED,
 } from '@/lib/stripe';
@@ -314,14 +314,12 @@ export function useClaimWaitlistSpot() {
         throw new Error('Missing payment details from server.');
       }
 
-      await initializePaymentSheet({
+      const result = await presentIntentPaymentSheet({
         paymentIntentClientSecret: data.clientSecret,
         customerEphemeralKeySecret: data.ephemeralKeySecret,
         customerId: data.customerId,
         amount,
       });
-
-      const result = await openPaymentSheet();
       if (!result.success) {
         // Roll the booking back so the spot can rotate to the next
         // waitlister. The server cancels the PaymentIntent on the

@@ -15,7 +15,7 @@ import { useRequireAdultWaiver } from '@/hooks/useWaiver';
 import { useActiveBlock } from '@/hooks/useActiveBlock';
 import { useBookOneToOneWithBlock } from '@/hooks/useBlockPurchase';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet, formatGBP, PAYMENT_CANCELED } from '@/lib/stripe';
+import { presentIntentPaymentSheet, formatGBP, PAYMENT_CANCELED } from '@/lib/stripe';
 import { OneToOneWithDetails, PaymentMethod } from '@/types';
 
 
@@ -66,14 +66,12 @@ export default function OneToOneDetailScreen() {
         }>('create-payment-intent', { type: 'one_to_one', id });
         if (error) throw new Error(error.message);
 
-        await initializePaymentSheet({
+        const result = await presentIntentPaymentSheet({
           paymentIntentClientSecret: data!.clientSecret,
           customerEphemeralKeySecret: data!.ephemeralKeySecret,
           customerId: data!.customerId,
           amount: oto!.price,
         });
-
-        const result = await openPaymentSheet();
         if (!result.success) {
           try {
             await invokeFunction('cancel-one-to-one', { oneToOneId: id });

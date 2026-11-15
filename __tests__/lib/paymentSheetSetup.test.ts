@@ -4,16 +4,18 @@
  * be the one left in place.
  */
 
-import { initPaymentSheet } from '@stripe/stripe-react-native';
+import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
 import {
   claimPaymentSheet,
   initializeDeferredPaymentSheet,
   initializePaymentSheet,
   ownsPaymentSheet,
+  presentIntentPaymentSheet,
   PAYMENT_SHEET_SUPERSEDED,
 } from '../../lib/stripe';
 
 const mockInit = initPaymentSheet as jest.Mock;
+const mockPresent = presentPaymentSheet as jest.Mock;
 
 const deferred = (ticket: number, amount: number) => ({
   ticket,
@@ -75,5 +77,27 @@ describe('PaymentSheet set-up ordering', () => {
 
     await expect(initializePaymentSheet(intent('pi_1_secret_a'))).rejects.toThrow('Invalid ephemeral key');
     await expect(initializePaymentSheet(intent('pi_2_secret_b'))).resolves.toBeUndefined();
+  });
+
+  describe('presentIntentPaymentSheet', () => {
+    beforeEach(() => mockPresent.mockClear());
+
+    it('reports a set-up failure as a failed payment without presenting', async () => {
+      mockInit.mockResolvedValueOnce({ error: { message: 'Invalid ephemeral key' } });
+
+      const result = await presentIntentPaymentSheet(intent('pi_1_secret_a'));
+
+      expect(result).toEqual({ success: false, error: 'Invalid ephemeral key' });
+      expect(mockPresent).not.toHaveBeenCalled();
+    });
+
+    it('presents the sheet once set up', async () => {
+      mockPresent.mockResolvedValueOnce({ error: undefined });
+
+      const result = await presentIntentPaymentSheet(intent('pi_1_secret_a'));
+
+      expect(mockPresent).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ success: true });
+    });
   });
 });
