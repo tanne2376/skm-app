@@ -24,7 +24,7 @@ import { KidsBookingSheet } from '@/components/KidsBookingSheet';
 import { useKidsClassActions } from '@/hooks/useKidsClassActions';
 import { useUpcomingSessions } from '@/hooks/useClassSessions';
 import { useActiveMembership } from '@/hooks/useActiveMembership';
-import { useBookSession, useCancelBooking, useJoinWaitlist, useClaimWaitlistSpot } from '@/hooks/useBookSession';
+import { useBookSession, useCancelBooking, useJoinWaitlist, useClaimWaitlistSpot, prepareClassCardPayment } from '@/hooks/useBookSession';
 import { useDefaultClassLeaderName } from '@/hooks/useDefaultClassLeader';
 import { getClassLeaderName } from '@/lib/teacherName';
 import { useRealtimeInvalidate } from '@/hooks/useRealtime';
@@ -143,7 +143,9 @@ export default function HomeScreen() {
       return;
     }
 
-    // Show payment options (card / Apple Pay / cash)
+    // Show payment options (card / Apple Pay / cash), loading the card sheet
+    // meanwhile so it opens instantly if they pick card.
+    prepareClassCardPayment(session);
     setSelectedSession(session);
   }
 

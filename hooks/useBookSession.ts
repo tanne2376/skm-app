@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { initializePaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
+import { initializePaymentSheet, initializeDeferredPaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
 import { scheduleClassReminder } from '@/lib/notifications';
 import { useAuth } from './useAuth';
 import { useActiveMembership } from './useActiveMembership';
@@ -10,6 +10,84 @@ import { ClassSessionWithDetails, PaymentMethod } from '@/types';
 interface BookSessionParams {
   session: ClassSessionWithDetails;
   paymentMethod: PaymentMethod;
+}
+
+/**
+ * A class card payment whose PaymentSheet is (being) set up ahead of time.
+ * `paymentIntentId` is set once the user presses Pay and the server has
+ * created the PaymentIntent and pending booking.
+ */
+interface PreparedCardPayment {
+  sessionId: string;
+  ready: Promise<void>;
+  paymentIntentId: string | null;
+}
+
+// PaymentSheet holds one configuration at a time, so set-ups run one after
+// another and only the most recent one is used.
+let latestPrepared: PreparedCardPayment | null = null;
+let prepareQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Start loading the card PaymentSheet for a class (deferred-intent flow).
+ * Call it as soon as the payment options appear: by the time the user taps
+ * "Card", the sheet opens instantly. Nothing is booked or charged until they
+ * press Pay inside the sheet, so it costs nothing if they pay another way.
+ */
+export function prepareClassCardPayment(session: ClassSessionWithDetails): PreparedCardPayment {
+  // Saving a card is a per-attempt choice; reuse the intent for retries
+  // (e.g. after a decline) unless that choice changes.
+  let created: { clientSecret: string; saved: boolean } | null = null;
+
+  const prepared: PreparedCardPayment = {
+    sessionId: session.id,
+    paymentIntentId: null,
+    ready: Promise.resolve(),
+  };
+
+  prepared.ready = prepareQueue.then(async () => {
+    const { data, error } = await invokeFunction<{
+      customerId: string; ephemeralKeySecret: string;
+    }>('payment-sheet-customer');
+    if (error) throw new Error(error.message ?? 'Could not start payment.');
+
+    await initializeDeferredPaymentSheet({
+      customerId: data!.customerId,
+      customerEphemeralKeySecret: data!.ephemeralKeySecret,
+      amount: session.effective_price,
+      confirmHandler: async (_paymentMethod, shouldSavePaymentMethod, intentCreationCallback) => {
+        if (created && created.saved === shouldSavePaymentMethod) {
+          intentCreationCallback({ clientSecret: created.clientSecret });
+          return;
+        }
+        // A different save choice needs a new intent; free the place held by the old one.
+        if (prepared.paymentIntentId) await cancelPendingCardBooking(prepared.paymentIntentId);
+
+        const { data: intent, error: intentError } = await invokeFunction<{ clientSecret: string }>(
+          'create-payment-intent',
+          { type: 'class', id: session.id, deferred: true, savePaymentMethod: shouldSavePaymentMethod },
+        );
+        if (intentError || !intent) {
+          const message = intentError?.message ?? 'Could not create payment.';
+          intentCreationCallback({ error: { code: 'Failed', message, localizedMessage: message } });
+          return;
+        }
+        created = { clientSecret: intent.clientSecret, saved: shouldSavePaymentMethod };
+        prepared.paymentIntentId = intent.clientSecret.split('_secret_')[0];
+        intentCreationCallback({ clientSecret: intent.clientSecret });
+      },
+    });
+  });
+  prepareQueue = prepared.ready.catch(() => {});
+  latestPrepared = prepared;
+  return prepared;
+}
+
+async function cancelPendingCardBooking(paymentIntentId: string) {
+  await supabase
+    .from('bookings')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('stripe_payment_intent_id', paymentIntentId);
 }
 
 export function useBookSession() {
@@ -61,28 +139,24 @@ export function useBookSession() {
         if (error) throw new Error(error.message ?? 'Failed to book with membership.');
 
       } else {
-        // App payment via Stripe
-        const { data, error } = await invokeFunction<{
-          clientSecret: string; customerId: string; ephemeralKeySecret: string;
-        }>('create-payment-intent', { type: 'class', id: session.id });
-        if (error) throw new Error(error.message ?? 'Could not create payment.');
-
-        const { clientSecret, customerId, ephemeralKeySecret } = data!;
-
-        await initializePaymentSheet({
-          paymentIntentClientSecret: clientSecret,
-          customerEphemeralKeySecret: ephemeralKeySecret,
-          customerId,
-          amount: session.effective_price,
-        });
+        // App payment via Stripe (deferred intent — see prepareClassCardPayment)
+        const prepared = latestPrepared?.sessionId === session.id
+          ? latestPrepared
+          : prepareClassCardPayment(session);
+        try {
+          await prepared.ready;
+        } catch (e) {
+          // A failed set-up shouldn't stick; the next attempt starts afresh.
+          if (latestPrepared === prepared) latestPrepared = null;
+          throw e;
+        }
 
         const result = await openPaymentSheet();
+        // Each sheet set-up is for one checkout.
+        if (latestPrepared === prepared) latestPrepared = null;
         if (!result.success) {
-          // Cancel the pending booking created by the edge function
-          await supabase
-            .from('bookings')
-            .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-            .eq('stripe_payment_intent_id', clientSecret.split('_secret_')[0]);
+          // Cancel the pending booking if the user got as far as pressing Pay.
+          if (prepared.paymentIntentId) await cancelPendingCardBooking(prepared.paymentIntentId);
           throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
         }
 

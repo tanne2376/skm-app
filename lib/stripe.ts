@@ -1,4 +1,5 @@
 import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
+import type { IntentConfiguration } from '@stripe/stripe-react-native';
 import { COLORS } from '@/constants';
 
 export interface PaymentSheetParams {
@@ -10,11 +11,9 @@ export interface PaymentSheetParams {
   merchantDisplayName?: string;
 }
 
-export async function initializePaymentSheet(params: PaymentSheetParams): Promise<void> {
-  const { error } = await initPaymentSheet({
-    paymentIntentClientSecret: params.paymentIntentClientSecret,
-    customerEphemeralKeySecret: params.customerEphemeralKeySecret,
-    customerId: params.customerId,
+// Shared PaymentSheet look and wallet setup.
+function sheetOptions(params: { currency?: string; merchantDisplayName?: string }) {
+  return {
     merchantDisplayName: params.merchantDisplayName ?? 'Switch-Kick Mafia',
     // Required for redirect-based payment methods (Klarna, Bancontact, iDEAL, etc.)
     // to return to the app after the bank/wallet flow completes. App scheme set
@@ -33,7 +32,7 @@ export async function initializePaymentSheet(params: PaymentSheetParams): Promis
         country: 'GB',
       },
     },
-    style: 'alwaysDark',
+    style: 'alwaysDark' as const,
     appearance: {
       colors: {
         primary: COLORS.accent,
@@ -48,6 +47,45 @@ export async function initializePaymentSheet(params: PaymentSheetParams): Promis
         icon: COLORS.grey[400],
         error: COLORS.error,
       },
+    },
+  };
+}
+
+export async function initializePaymentSheet(params: PaymentSheetParams): Promise<void> {
+  const { error } = await initPaymentSheet({
+    ...sheetOptions(params),
+    paymentIntentClientSecret: params.paymentIntentClientSecret,
+    customerEphemeralKeySecret: params.customerEphemeralKeySecret,
+    customerId: params.customerId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export interface DeferredPaymentSheetParams {
+  customerEphemeralKeySecret: string;
+  customerId: string;
+  amount: number; // pence
+  currency?: string;
+  merchantDisplayName?: string;
+  /** Called when the user presses Pay: create the PaymentIntent and hand back its client secret. */
+  confirmHandler: NonNullable<IntentConfiguration['confirmHandler']>;
+}
+
+/**
+ * Set up PaymentSheet before a PaymentIntent exists (Stripe's deferred-intent
+ * flow), so it can open instantly. The intent is created in `confirmHandler`.
+ */
+export async function initializeDeferredPaymentSheet(params: DeferredPaymentSheetParams): Promise<void> {
+  const { error } = await initPaymentSheet({
+    ...sheetOptions(params),
+    customerEphemeralKeySecret: params.customerEphemeralKeySecret,
+    customerId: params.customerId,
+    intentConfiguration: {
+      mode: { amount: params.amount, currencyCode: (params.currency ?? 'gbp').toUpperCase() },
+      confirmHandler: params.confirmHandler,
     },
   });
 

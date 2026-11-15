@@ -115,7 +115,8 @@ supabase/
 ## Edge Functions (all deployed)
 | Function | JWT | Purpose |
 |----------|-----|---------|
-| `create-payment-intent` | ✅ | Class/1-to-1 payment, capacity lock |
+| `create-payment-intent` | ✅ | Class/1-to-1 payment + pending booking (`deferred` mode for the class sheet's confirmHandler) |
+| `payment-sheet-customer` | ✅ | Customer + ephemeral key so the class card sheet loads before the user picks a payment method |
 | `book-with-membership` | ✅ | Membership quota check + direct booking |
 | `cancel-booking` | ✅ | Refund logic + waitlist promotion trigger |
 | `create-subscription` | ✅ | Stripe recurring subscription setup (anchored to 1st of month) |

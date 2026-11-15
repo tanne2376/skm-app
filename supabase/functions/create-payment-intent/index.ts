@@ -11,7 +11,15 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const { type, id } = await req.json() as { type: 'class' | 'one_to_one'; id: string };
+  const { type, id, deferred = false, savePaymentMethod = false } = await req.json() as {
+    type: 'class' | 'one_to_one';
+    id: string;
+    // Called from a deferred-intent PaymentSheet's confirmHandler: the sheet
+    // already has a customer ephemeral key (payment-sheet-customer), and
+    // card saving follows the sheet's checkbox.
+    deferred?: boolean;
+    savePaymentMethod?: boolean;
+  };
 
   const adminClient = createAdminClient();
 
@@ -90,16 +98,19 @@ Deno.serve(async (req) => {
 
   // ── Create ephemeral key + PaymentIntent (independent, so in parallel) ────
   const [ephemeralKey, paymentIntent] = await Promise.all([
-    stripe.ephemeralKeys.create(
-      { customer: customerId },
-      { apiVersion: '2025-03-31.basil' },
-    ),
+    deferred
+      ? null
+      : stripe.ephemeralKeys.create(
+        { customer: customerId },
+        { apiVersion: '2025-03-31.basil' },
+      ),
     stripe.paymentIntents.create({
       amount: amountPence,
       currency: 'gbp',
       customer: customerId,
       description,
       automatic_payment_methods: { enabled: true },
+      ...(deferred && savePaymentMethod && { setup_future_usage: 'off_session' as const }),
       metadata: {
         booking_type: type,
         session_id: sessionId ?? '',
@@ -152,6 +163,6 @@ Deno.serve(async (req) => {
   return jsonResponse({
     clientSecret: paymentIntent.client_secret,
     customerId,
-    ephemeralKeySecret: ephemeralKey.secret,
+    ...(ephemeralKey && { ephemeralKeySecret: ephemeralKey.secret }),
   });
 });
