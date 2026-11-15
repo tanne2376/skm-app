@@ -11,6 +11,21 @@ export interface PaymentSheetParams {
   merchantDisplayName?: string;
 }
 
+// PaymentSheet holds one configuration app-wide. Each set-up takes a ticket;
+// only the newest ticket's configuration is current, so a slow set-up that
+// finishes late can tell it has been superseded instead of overwriting.
+let sheetTicket = 0;
+
+/** Reserve the PaymentSheet for a new set-up. */
+export function claimPaymentSheet(): number {
+  return ++sheetTicket;
+}
+
+/** Whether `ticket` is still the most recent PaymentSheet set-up. */
+export function ownsPaymentSheet(ticket: number): boolean {
+  return ticket === sheetTicket;
+}
+
 // Shared PaymentSheet look and wallet setup.
 function sheetOptions(params: { currency?: string; merchantDisplayName?: string }) {
   return {
@@ -52,6 +67,7 @@ function sheetOptions(params: { currency?: string; merchantDisplayName?: string 
 }
 
 export async function initializePaymentSheet(params: PaymentSheetParams): Promise<void> {
+  claimPaymentSheet();
   const { error } = await initPaymentSheet({
     ...sheetOptions(params),
     paymentIntentClientSecret: params.paymentIntentClientSecret,
@@ -65,6 +81,8 @@ export async function initializePaymentSheet(params: PaymentSheetParams): Promis
 }
 
 export interface DeferredPaymentSheetParams {
+  /** From claimPaymentSheet(); the set-up is skipped if a newer one has started. */
+  ticket: number;
   customerEphemeralKeySecret: string;
   customerId: string;
   amount: number; // pence
@@ -79,6 +97,7 @@ export interface DeferredPaymentSheetParams {
  * flow), so it can open instantly. The intent is created in `confirmHandler`.
  */
 export async function initializeDeferredPaymentSheet(params: DeferredPaymentSheetParams): Promise<void> {
+  if (!ownsPaymentSheet(params.ticket)) throw new Error(PAYMENT_SHEET_SUPERSEDED);
   const { error } = await initPaymentSheet({
     ...sheetOptions(params),
     customerEphemeralKeySecret: params.customerEphemeralKeySecret,
@@ -95,6 +114,7 @@ export async function initializeDeferredPaymentSheet(params: DeferredPaymentShee
 }
 
 export const PAYMENT_CANCELED = '__payment_canceled__';
+export const PAYMENT_SHEET_SUPERSEDED = '__payment_sheet_superseded__';
 
 export async function openPaymentSheet(): Promise<{ success: boolean; canceled?: boolean; error?: string }> {
   const { error } = await presentPaymentSheet();

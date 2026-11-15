@@ -1,6 +1,7 @@
 import { corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { getOrCreateStripeCustomer } from '../_shared/customer.ts';
 
 // Customer + ephemeral key for a deferred-intent PaymentSheet. Lets the app
 // load the sheet (with saved cards) before the user picks a payment method;
@@ -23,20 +24,11 @@ Deno.serve(async (req) => {
     .eq('id', user.id)
     .single();
 
-  let customerId: string;
-  if (profile?.stripe_customer_id) {
-    customerId = profile.stripe_customer_id;
-  } else {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { supabase_user_id: user.id },
-    });
-    customerId = customer.id;
-    await adminClient
-      .from('profiles')
-      .update({ stripe_customer_id: customerId })
-      .eq('id', user.id);
-  }
+  const customerId = await getOrCreateStripeCustomer(
+    adminClient,
+    user,
+    profile?.stripe_customer_id ?? null,
+  );
 
   const ephemeralKey = await stripe.ephemeralKeys.create(
     { customer: customerId },

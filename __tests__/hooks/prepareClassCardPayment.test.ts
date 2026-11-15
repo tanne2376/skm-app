@@ -9,12 +9,22 @@ jest.mock('../../lib/supabase', () => ({
   invokeFunction: jest.fn(),
 }));
 
-jest.mock('../../lib/stripe', () => ({
-  initializePaymentSheet: jest.fn(),
-  initializeDeferredPaymentSheet: jest.fn().mockResolvedValue(undefined),
-  openPaymentSheet: jest.fn(),
-  PAYMENT_CANCELED: '__payment_canceled__',
-}));
+jest.mock('../../lib/stripe', () => {
+  let ticket = 0;
+  const ownsPaymentSheet = (t: number) => t === ticket;
+  return {
+    claimPaymentSheet: jest.fn(() => ++ticket),
+    ownsPaymentSheet,
+    initializePaymentSheet: jest.fn(),
+    // Mirrors the real guard: a superseded set-up is skipped.
+    initializeDeferredPaymentSheet: jest.fn(async ({ ticket: t }: { ticket: number }) => {
+      if (!ownsPaymentSheet(t)) throw new Error('__payment_sheet_superseded__');
+    }),
+    openPaymentSheet: jest.fn(),
+    PAYMENT_CANCELED: '__payment_canceled__',
+    PAYMENT_SHEET_SUPERSEDED: '__payment_sheet_superseded__',
+  };
+});
 
 jest.mock('expo-constants', () => ({
   default: { expoConfig: { extra: { supabaseUrl: 'https://test.supabase.co', supabaseAnonKey: 'test-anon-key' } } },
@@ -28,7 +38,7 @@ jest.mock('expo-secure-store', () => ({
 
 import { prepareClassCardPayment } from '../../hooks/useBookSession';
 import { supabase, invokeFunction } from '../../lib/supabase';
-import { initializeDeferredPaymentSheet } from '../../lib/stripe';
+import { claimPaymentSheet, initializeDeferredPaymentSheet } from '../../lib/stripe';
 import { ClassSessionWithDetails } from '../../types';
 
 const mockInvoke = invokeFunction as jest.Mock;
@@ -37,8 +47,8 @@ const mockFrom = supabase.from as jest.Mock;
 
 const session = { id: 'session-1', effective_price: 1500 } as ClassSessionWithDetails;
 
-function mockBookingsUpdate() {
-  const eq = jest.fn().mockResolvedValue({ error: null });
+function mockBookingsUpdate(error: { message: string } | null = null) {
+  const eq = jest.fn().mockResolvedValue({ error });
   const update = jest.fn(() => ({ eq }));
   mockFrom.mockReturnValue({ update });
   return { update, eq };
@@ -83,24 +93,13 @@ describe('prepareClassCardPayment', () => {
     const result = await pressPay(confirmHandler, true);
 
     expect(mockInvoke).toHaveBeenLastCalledWith('create-payment-intent', {
-      type: 'class', id: 'session-1', deferred: true, savePaymentMethod: true,
+      type: 'class', id: 'session-1', deferred: true, savePaymentMethod: true, expectedAmount: 1500,
     });
     expect(result).toEqual({ clientSecret: 'pi_1_secret_a' });
     expect(prepared.paymentIntentId).toBe('pi_1');
   });
 
-  it('reuses the PaymentIntent when Pay is pressed again (e.g. after a decline)', async () => {
-    const { confirmHandler } = await prepareAndGetConfirmHandler();
-    mockInvoke.mockResolvedValueOnce({ data: { clientSecret: 'pi_1_secret_a' }, error: null });
-
-    await pressPay(confirmHandler, false);
-    const retry = await pressPay(confirmHandler, false);
-
-    expect(retry).toEqual({ clientSecret: 'pi_1_secret_a' });
-    expect(mockInvoke.mock.calls.filter(([name]) => name === 'create-payment-intent')).toHaveLength(1);
-  });
-
-  it('frees the old pending booking and makes a new intent if the save-card choice changes', async () => {
+  it('never reuses an intent: a second Pay press frees the old booking and makes a new intent', async () => {
     const { prepared, confirmHandler } = await prepareAndGetConfirmHandler();
     const { update, eq } = mockBookingsUpdate();
     mockInvoke
@@ -108,13 +107,55 @@ describe('prepareClassCardPayment', () => {
       .mockResolvedValueOnce({ data: { clientSecret: 'pi_2_secret_b' }, error: null });
 
     await pressPay(confirmHandler, false);
-    const retry = await pressPay(confirmHandler, true);
+    const retry = await pressPay(confirmHandler, false);
 
     expect(mockFrom).toHaveBeenCalledWith('bookings');
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
     expect(eq).toHaveBeenCalledWith('stripe_payment_intent_id', 'pi_1');
     expect(retry).toEqual({ clientSecret: 'pi_2_secret_b' });
     expect(prepared.paymentIntentId).toBe('pi_2');
+  });
+
+  it('does not fall back to a cancelled intent when its replacement fails', async () => {
+    const { prepared, confirmHandler } = await prepareAndGetConfirmHandler();
+    mockBookingsUpdate();
+    mockInvoke
+      .mockResolvedValueOnce({ data: { clientSecret: 'pi_1_secret_a' }, error: null })
+      .mockResolvedValueOnce({ data: null, error: new Error('Network error') })
+      .mockResolvedValueOnce({ data: { clientSecret: 'pi_3_secret_c' }, error: null });
+
+    await pressPay(confirmHandler, false);
+    const failed = await pressPay(confirmHandler, true);
+    expect(failed.error.message).toBe('Network error');
+    expect(prepared.paymentIntentId).toBeNull();
+
+    const third = await pressPay(confirmHandler, false);
+    expect(third).toEqual({ clientSecret: 'pi_3_secret_c' });
+    expect(mockInvoke.mock.calls.filter(([name]) => name === 'create-payment-intent')).toHaveLength(3);
+  });
+
+  it('stops and shows the error if the old pending booking cannot be cancelled', async () => {
+    const { prepared, confirmHandler } = await prepareAndGetConfirmHandler();
+    mockBookingsUpdate({ message: 'permission denied' });
+    mockInvoke.mockResolvedValueOnce({ data: { clientSecret: 'pi_1_secret_a' }, error: null });
+
+    await pressPay(confirmHandler, false);
+    const retry = await pressPay(confirmHandler, false);
+
+    expect(retry.error.message).toBe('permission denied');
+    expect(prepared.paymentIntentId).toBe('pi_1');
+    expect(mockInvoke.mock.calls.filter(([name]) => name === 'create-payment-intent')).toHaveLength(1);
+  });
+
+  it('skips a set-up that another checkout has superseded', async () => {
+    let releaseCustomer: (v: unknown) => void = () => {};
+    mockInvoke.mockReturnValueOnce(new Promise((resolve) => { releaseCustomer = resolve; }));
+    const stale = prepareClassCardPayment(session);
+
+    claimPaymentSheet(); // e.g. a membership checkout initialises the sheet meanwhile
+    releaseCustomer({ data: { customerId: 'cus_1', ephemeralKeySecret: 'ek_1' }, error: null });
+
+    await expect(stale.ready).rejects.toThrow('__payment_sheet_superseded__');
   });
 
   it('shows the server error in the sheet when the intent cannot be created', async () => {

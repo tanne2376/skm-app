@@ -1,6 +1,7 @@
 import { corsHeaders, corsResponse, jsonResponse, errorResponse } from '../_shared/cors.ts';
 import { createAdminClient, getUserFromToken } from '../_shared/supabase.ts';
 import { stripe } from '../_shared/stripe.ts';
+import { getOrCreateStripeCustomer } from '../_shared/customer.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return corsResponse();
@@ -11,7 +12,7 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const { type, id, deferred = false, savePaymentMethod = false } = await req.json() as {
+  const { type, id, deferred = false, savePaymentMethod = false, expectedAmount } = await req.json() as {
     type: 'class' | 'one_to_one';
     id: string;
     // Called from a deferred-intent PaymentSheet's confirmHandler: the sheet
@@ -19,6 +20,8 @@ Deno.serve(async (req) => {
     // card saving follows the sheet's checkbox.
     deferred?: boolean;
     savePaymentMethod?: boolean;
+    // The amount the sheet was set up with; the intent must match it.
+    expectedAmount?: number;
   };
 
   const adminClient = createAdminClient();
@@ -79,22 +82,12 @@ Deno.serve(async (req) => {
     existingCustomerId = profile?.stripe_customer_id ?? null;
   }
 
-  // ── Get or create Stripe customer ─────────────────────────────────────────
-  let customerId: string;
-  let saveCustomerId: PromiseLike<unknown> = Promise.resolve();
-  if (existingCustomerId) {
-    customerId = existingCustomerId;
-  } else {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { supabase_user_id: user.id },
-    });
-    customerId = customer.id;
-    saveCustomerId = adminClient
-      .from('profiles')
-      .update({ stripe_customer_id: customerId })
-      .eq('id', user.id);
+  if (deferred && expectedAmount !== undefined && expectedAmount !== amountPence) {
+    return errorResponse('The price of this class has changed. Please close this and try again.', 409);
   }
+
+  // ── Get or create Stripe customer ─────────────────────────────────────────
+  const customerId = await getOrCreateStripeCustomer(adminClient, user, existingCustomerId);
 
   // ── Create ephemeral key + PaymentIntent (independent, so in parallel) ────
   const [ephemeralKey, paymentIntent] = await Promise.all([
@@ -118,7 +111,6 @@ Deno.serve(async (req) => {
         student_id: user.id,
       },
     }),
-    saveCustomerId,
   ]);
 
   // ── Insert pending booking ─────────────────────────────────────────────────
@@ -133,8 +125,10 @@ Deno.serve(async (req) => {
     });
     if (bookingError) {
       await stripe.paymentIntents.cancel(paymentIntent.id);
-      // bookings_require_adult_waiver trigger
+      // validate_booking trigger
       if (bookingError.hint === 'waiver_required') return errorResponse(bookingError.message, 403);
+      // enforce_session_capacity trigger (lost the race for the last place)
+      if (bookingError.hint === 'class_full') return errorResponse('Class is full', 409);
       // Duplicate — already booked
       return errorResponse('You already have a booking for this class.', 409);
     }

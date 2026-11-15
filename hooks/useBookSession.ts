@@ -1,7 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import { supabase, invokeFunction } from '@/lib/supabase';
-import { initializePaymentSheet, initializeDeferredPaymentSheet, openPaymentSheet, PAYMENT_CANCELED } from '@/lib/stripe';
+import {
+  claimPaymentSheet,
+  initializePaymentSheet,
+  initializeDeferredPaymentSheet,
+  openPaymentSheet,
+  ownsPaymentSheet,
+  PAYMENT_CANCELED,
+  PAYMENT_SHEET_SUPERSEDED,
+} from '@/lib/stripe';
 import { scheduleClassReminder } from '@/lib/notifications';
 import { useAuth } from './useAuth';
 import { useActiveMembership } from './useActiveMembership';
@@ -19,13 +27,16 @@ interface BookSessionParams {
  */
 interface PreparedCardPayment {
   sessionId: string;
+  /** PaymentSheet ticket (see claimPaymentSheet); stale once another set-up starts. */
+  ticket: number;
   ready: Promise<void>;
   paymentIntentId: string | null;
 }
 
-// PaymentSheet holds one configuration at a time, so set-ups run one after
-// another and only the most recent one is used.
+const PAYMENT_INTERRUPTED = 'Payment was interrupted by another checkout. Please try again.';
+
 let latestPrepared: PreparedCardPayment | null = null;
+// initPaymentSheet calls must not overlap, so set-ups run one after another.
 let prepareQueue: Promise<unknown> = Promise.resolve();
 
 /**
@@ -35,12 +46,9 @@ let prepareQueue: Promise<unknown> = Promise.resolve();
  * press Pay inside the sheet, so it costs nothing if they pay another way.
  */
 export function prepareClassCardPayment(session: ClassSessionWithDetails): PreparedCardPayment {
-  // Saving a card is a per-attempt choice; reuse the intent for retries
-  // (e.g. after a decline) unless that choice changes.
-  let created: { clientSecret: string; saved: boolean } | null = null;
-
   const prepared: PreparedCardPayment = {
     sessionId: session.id,
+    ticket: claimPaymentSheet(),
     paymentIntentId: null,
     ready: Promise.resolve(),
   };
@@ -52,27 +60,41 @@ export function prepareClassCardPayment(session: ClassSessionWithDetails): Prepa
     if (error) throw new Error(error.message ?? 'Could not start payment.');
 
     await initializeDeferredPaymentSheet({
+      ticket: prepared.ticket,
       customerId: data!.customerId,
       customerEphemeralKeySecret: data!.ephemeralKeySecret,
       amount: session.effective_price,
       confirmHandler: async (_paymentMethod, shouldSavePaymentMethod, intentCreationCallback) => {
-        if (created && created.saved === shouldSavePaymentMethod) {
-          intentCreationCallback({ clientSecret: created.clientSecret });
-          return;
+        const fail = (message: string) =>
+          intentCreationCallback({ error: { code: 'Failed', message, localizedMessage: message } });
+
+        // A second Pay press means the last attempt didn't go through (e.g. a
+        // decline, after which the webhook cancels its booking). Never reuse
+        // that intent: free its place and start a fresh one.
+        if (prepared.paymentIntentId) {
+          try {
+            await cancelPendingCardBooking(prepared.paymentIntentId);
+          } catch (e) {
+            fail(e instanceof Error ? e.message : 'Could not retry payment.');
+            return;
+          }
+          prepared.paymentIntentId = null;
         }
-        // A different save choice needs a new intent; free the place held by the old one.
-        if (prepared.paymentIntentId) await cancelPendingCardBooking(prepared.paymentIntentId);
 
         const { data: intent, error: intentError } = await invokeFunction<{ clientSecret: string }>(
           'create-payment-intent',
-          { type: 'class', id: session.id, deferred: true, savePaymentMethod: shouldSavePaymentMethod },
+          {
+            type: 'class',
+            id: session.id,
+            deferred: true,
+            savePaymentMethod: shouldSavePaymentMethod,
+            expectedAmount: session.effective_price,
+          },
         );
         if (intentError || !intent) {
-          const message = intentError?.message ?? 'Could not create payment.';
-          intentCreationCallback({ error: { code: 'Failed', message, localizedMessage: message } });
+          fail(intentError?.message ?? 'Could not create payment.');
           return;
         }
-        created = { clientSecret: intent.clientSecret, saved: shouldSavePaymentMethod };
         prepared.paymentIntentId = intent.clientSecret.split('_secret_')[0];
         intentCreationCallback({ clientSecret: intent.clientSecret });
       },
@@ -84,10 +106,11 @@ export function prepareClassCardPayment(session: ClassSessionWithDetails): Prepa
 }
 
 async function cancelPendingCardBooking(paymentIntentId: string) {
-  await supabase
+  const { error } = await supabase
     .from('bookings')
     .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
     .eq('stripe_payment_intent_id', paymentIntentId);
+  if (error) throw new Error(error.message || 'Could not cancel the unpaid booking.');
 }
 
 export function useBookSession() {
@@ -140,16 +163,18 @@ export function useBookSession() {
 
       } else {
         // App payment via Stripe (deferred intent — see prepareClassCardPayment)
-        const prepared = latestPrepared?.sessionId === session.id
-          ? latestPrepared
-          : prepareClassCardPayment(session);
+        const usable = (p: PreparedCardPayment | null): p is PreparedCardPayment =>
+          !!p && p.sessionId === session.id && ownsPaymentSheet(p.ticket);
+        const prepared = usable(latestPrepared) ? latestPrepared : prepareClassCardPayment(session);
         try {
           await prepared.ready;
         } catch (e) {
           // A failed set-up shouldn't stick; the next attempt starts afresh.
           if (latestPrepared === prepared) latestPrepared = null;
+          if (e instanceof Error && e.message === PAYMENT_SHEET_SUPERSEDED) throw new Error(PAYMENT_INTERRUPTED);
           throw e;
         }
+        if (!ownsPaymentSheet(prepared.ticket)) throw new Error(PAYMENT_INTERRUPTED);
 
         const result = await openPaymentSheet();
         // Each sheet set-up is for one checkout.
@@ -157,6 +182,8 @@ export function useBookSession() {
         if (!result.success) {
           // Cancel the pending booking if the user got as far as pressing Pay.
           if (prepared.paymentIntentId) await cancelPendingCardBooking(prepared.paymentIntentId);
+          // The sheet may have failed on stale data (price, capacity); refresh it.
+          queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
           throw new Error(result.canceled ? PAYMENT_CANCELED : (result.error ?? 'Payment failed.'));
         }
 
