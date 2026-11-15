@@ -19,7 +19,7 @@ export function useClassSessions(from: Date, to: Date) {
           *,
           class_templates (*, teacher:profiles!teacher_id (id, full_name)),
           teacher:profiles!teacher_id (id, full_name),
-          bookings (id, student_id, status, payment_method, payment_status,
+          bookings (id, student_id, child_id, status, payment_method, payment_status,
                     stripe_payment_intent_id, waitlist_position,
                     claim_window_started_at, booked_at, cancelled_at)
         `)
@@ -46,9 +46,11 @@ export function useClassSessions(from: Date, to: Date) {
 
       return (data ?? []).map((s: any) => {
         const allBookings = s.bookings ?? [];
-        const userBooking = userId
-          ? allBookings.find((b: any) => b.student_id === userId && b.status !== 'cancelled')
-          : undefined;
+        const ownLive = userId
+          ? allBookings.filter((b: any) => b.student_id === userId && b.status !== 'cancelled')
+          : [];
+        const userBooking = ownLive.find((b: any) => !b.child_id);
+        const childBookings = ownLive.filter((b: any) => !!b.child_id);
         const stat = statsMap.get(s.id);
         const effectiveCapacity = s.capacity ?? s.class_templates?.capacity ?? 20;
         const effectivePrice = s.price ?? s.class_templates?.price ?? 1500;
@@ -58,6 +60,7 @@ export function useClassSessions(from: Date, to: Date) {
           confirmed_count: stat?.confirmed_count ?? 0,
           waitlist_count: stat?.waitlist_count ?? 0,
           user_booking: userBooking,
+          child_bookings: childBookings,
           effective_capacity: effectiveCapacity,
           effective_price: effectivePrice,
         } as ClassSessionWithDetails;

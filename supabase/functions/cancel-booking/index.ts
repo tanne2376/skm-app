@@ -101,7 +101,8 @@ Deno.serve(async (req) => {
   // If a membership slot was freed (>3hrs), check if a paid booking in the same
   // week can be converted to free — the 2/week allowance is count-based, not
   // pinned to specific sessions.
-  if (booking.payment_method === 'membership' && !withinWindow && !isPast) {
+  // Kids memberships are unlimited, so only adult bookings have slots to reuse.
+  if (booking.payment_method === 'membership' && !booking.child_id && !withinWindow && !isPast) {
     const weekStart = membershipWeekStart(session.session_date, session.start_time);
 
     // Get the student's active membership
@@ -109,6 +110,7 @@ Deno.serve(async (req) => {
       .from('memberships')
       .select('id, tier')
       .eq('student_id', booking.student_id)
+      .is('child_id', null)
       .in('status', ['active', 'cancelling'])
       .order('created_at', { ascending: false })
       .limit(1)
@@ -128,6 +130,7 @@ Deno.serve(async (req) => {
           .from('bookings')
           .select('id, stripe_payment_intent_id, session_id, payment_method')
           .eq('student_id', booking.student_id)
+          .is('child_id', null)
           .eq('status', 'confirmed')
           .eq('payment_method', 'app')
           .not('stripe_payment_intent_id', 'is', null)
@@ -191,11 +194,9 @@ Deno.serve(async (req) => {
 
   // Notify teacher + admins that a student left
   const sessionName = (session as any).class_templates?.name ?? 'Class';
-  const { data: cancellingStudent } = await adminClient
-    .from('profiles')
-    .select('full_name')
-    .eq('id', booking.student_id)
-    .single();
+  const { data: cancellingStudent } = booking.child_id
+    ? await adminClient.from('children').select('full_name').eq('id', booking.child_id).single()
+    : await adminClient.from('profiles').select('full_name').eq('id', booking.student_id).single();
   const studentName = cancellingStudent?.full_name ?? 'A student';
 
   const notifyIds = new Set<string>();

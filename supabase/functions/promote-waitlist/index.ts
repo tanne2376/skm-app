@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
   // Fetch waitlisted bookings ordered by current position
   const { data: waitlisted } = await adminClient
     .from('bookings')
-    .select('id, student_id, waitlist_position, claim_window_started_at')
+    .select('id, student_id, waitlist_position, claim_window_started_at, children(full_name)')
     .eq('session_id', sessionId)
     .eq('status', 'waitlisted')
     .order('waitlist_position', { ascending: true });
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
   if (rotatedIds.length > 0) {
     const { data: refetched } = await adminClient
       .from('bookings')
-      .select('id, student_id, waitlist_position, claim_window_started_at')
+      .select('id, student_id, waitlist_position, claim_window_started_at, children(full_name)')
       .eq('session_id', sessionId)
       .eq('status', 'waitlisted')
       .order('waitlist_position', { ascending: true });
@@ -142,7 +142,9 @@ Deno.serve(async (req) => {
         userId: b.student_id,
         type: 'waitlist_promotion',
         title: 'A spot opened up!',
-        body: `${sessionName} on ${session.session_date} has a spot for you. Claim it within 1 hour or it rolls to the next person.`,
+        body: `${sessionName} on ${session.session_date} has a spot for ${
+          (b as any).children?.full_name ?? 'you'
+        }. Claim it within 1 hour or it rolls to the next person.`,
         data: { sessionId, bookingId: b.id },
       });
     } catch (err) {

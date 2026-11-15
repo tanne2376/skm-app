@@ -43,6 +43,7 @@ export const DEFAULT_CLASS_PRICE_PENCE = 1500; // £15.00
 export const MEMBERSHIP_PRICES_PENCE = {
   two_per_week: 8000, // £80.00/mo
   unlimited: 10000,   // £100.00/mo
+  kids: 4000,         // £40.00/mo per child; the only way into kids classes
 } as const;
 
 // Day of week using ISODOW (1=Monday ... 7=Sunday)

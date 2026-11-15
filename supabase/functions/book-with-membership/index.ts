@@ -12,9 +12,10 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const { session_id, membership_id } = await req.json() as {
+  const { session_id, membership_id, child_id } = await req.json() as {
     session_id: string;
     membership_id: string;
+    child_id?: string; // set when booking a kids class for a child
   };
 
   const adminClient = createAdminClient();
@@ -37,6 +38,23 @@ Deno.serve(async (req) => {
     .single();
 
   if (!membership) return errorResponse('Membership not found or inactive', 403);
+
+  // Kids classes take the child's kids membership; every other class takes the
+  // account holder's own. The bookings trigger enforces the same.
+  const { data: sessionLevel } = await adminClient
+    .from('class_sessions')
+    .select('class_templates(level)')
+    .eq('id', session_id)
+    .single();
+  if (!sessionLevel) return errorResponse('Session not found', 404);
+  const isKidsClass = (sessionLevel as any).class_templates?.level === 'kids';
+  if (isKidsClass) {
+    if (!child_id || membership.tier !== 'kids' || membership.child_id !== child_id) {
+      return errorResponse('Kids classes need an active kids membership for this child.', 403);
+    }
+  } else if (child_id || membership.tier === 'kids') {
+    return errorResponse('Kids memberships only cover kids classes.', 403);
+  }
 
   // Cash memberships become unusable once the 72-hour grace expires unconfirmed
   if (membership.payment_method === 'cash' && membership.payment_status === 'pending') {
@@ -82,6 +100,7 @@ Deno.serve(async (req) => {
     .insert({
       session_id,
       student_id: user.id,
+      child_id: child_id ?? null,
       status: 'confirmed',
       payment_method: 'membership',
       payment_status: 'paid',
@@ -91,7 +110,9 @@ Deno.serve(async (req) => {
 
   if (bookingError) {
     if (bookingError.code === '23505') return errorResponse('Already booked for this class.', 409);
-    if (bookingError.hint === 'waiver_required') return errorResponse(bookingError.message, 403);
+    if (bookingError.hint === 'waiver_required' || bookingError.hint === 'kids_membership_required') {
+      return errorResponse(bookingError.message, 403);
+    }
     throw bookingError;
   }
 
@@ -120,11 +141,9 @@ Deno.serve(async (req) => {
     .single();
 
   if (sessionDetails) {
-    const { data: studentProfile } = await adminClient
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
+    const { data: studentProfile } = child_id
+      ? await adminClient.from('children').select('full_name').eq('id', child_id).single()
+      : await adminClient.from('profiles').select('full_name').eq('id', user.id).single();
 
     const sessionName = (sessionDetails as any).class_templates?.name ?? 'Class';
     const notifyIds: string[] = [];

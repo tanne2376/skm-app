@@ -11,19 +11,49 @@ Deno.serve(async (req) => {
   const user = await getUserFromToken(authHeader);
   if (!user) return errorResponse('Unauthorized', 401);
 
-  const { tier } = await req.json() as { tier: 'two_per_week' | 'unlimited' };
+  const { tier, childId } = await req.json() as {
+    tier: 'two_per_week' | 'unlimited' | 'kids';
+    childId?: string;
+  };
+
+  if (!['two_per_week', 'unlimited', 'kids'].includes(tier)) {
+    return errorResponse('Invalid membership tier.', 400);
+  }
+  // A kids membership is per child; adult memberships are for the account holder.
+  if ((tier === 'kids') !== !!childId) {
+    return errorResponse('Kids memberships are taken out for a child; adult memberships are not.', 400);
+  }
 
   const adminClient = createAdminClient();
 
-  // Block if active or cancelling membership already exists
-  const { data: existing } = await adminClient
+  let childName: string | null = null;
+  if (childId) {
+    const { data: child } = await adminClient
+      .from('children')
+      .select('full_name')
+      .eq('id', childId)
+      .eq('parent_id', user.id)
+      .maybeSingle();
+    if (!child) return errorResponse('Child not found on this account.', 404);
+    childName = child.full_name;
+  }
+
+  // Block if this person already has a membership (one adult membership per
+  // account, one kids membership per child)
+  let existingQuery = adminClient
     .from('memberships')
     .select('id')
     .eq('student_id', user.id)
-    .in('status', ['active', 'cancelling'])
-    .maybeSingle();
+    .in('status', ['active', 'cancelling', 'past_due']);
+  existingQuery = childId ? existingQuery.eq('child_id', childId) : existingQuery.is('child_id', null);
+  const { data: existing } = await existingQuery.maybeSingle();
 
-  if (existing) return errorResponse('You already have an active membership.', 409);
+  if (existing) {
+    return errorResponse(
+      childId ? `${childName} already has an active kids membership.` : 'You already have an active membership.',
+      409,
+    );
+  }
 
   // Get or create Stripe customer
   const { data: profile } = await adminClient
@@ -47,11 +77,32 @@ Deno.serve(async (req) => {
       .eq('id', user.id);
   }
 
-  const priceId = tier === 'unlimited'
-    ? Deno.env.get('STRIPE_PRICE_UNLIMITED')!
-    : Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK')!;
+  // A paid subscription only gets its membership row when the webhook lands.
+  // Until then the check above can't see it, so check Stripe too: a second
+  // purchase for the same person would be charged but then rejected.
+  if (profile?.stripe_customer_id) {
+    const adultPrices = [Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK'), Deno.env.get('STRIPE_PRICE_UNLIMITED')];
+    const subs = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 100 });
+    const inFlight = subs.data.some((sub: any) =>
+      ['active', 'trialing', 'past_due'].includes(sub.status)
+      && (childId
+        ? sub.metadata?.child_id === childId
+        : !sub.metadata?.child_id && adultPrices.includes(sub.items.data[0]?.price?.id)));
+    if (inFlight) {
+      return errorResponse('Your payment for this membership is still being processed. Please check back in a minute.', 409);
+    }
+  }
 
-  const amount = tier === 'unlimited' ? 10000 : 8000; // pence
+  const PRICES = {
+    two_per_week: { priceId: Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK'), amount: 8000, label: '2x/Week' },
+    unlimited: { priceId: Deno.env.get('STRIPE_PRICE_UNLIMITED'), amount: 10000, label: 'Unlimited' },
+    kids: { priceId: Deno.env.get('STRIPE_PRICE_KIDS'), amount: 4000, label: `Kids (${childName})` },
+  } as const;
+  const { priceId, amount, label } = PRICES[tier]; // amount in pence
+  if (!priceId) {
+    console.error(`Stripe price for ${tier} is not configured.`);
+    return errorResponse('This membership is not available yet.', 500);
+  }
 
   // Clean up any pending invoice items left from previous failed attempts
   const pendingItems = await stripe.invoiceItems.list({
@@ -69,7 +120,7 @@ Deno.serve(async (req) => {
     customer: customerId,
     amount,
     currency: 'gbp',
-    description: `SKM ${tier === 'unlimited' ? 'Unlimited' : '2x/Week'} — first month`,
+    description: `SKM ${label} — first month`,
   });
 
   // Create subscription with billing anchored to the 1st of every month.
@@ -82,6 +133,8 @@ Deno.serve(async (req) => {
     proration_behavior: 'none',
     payment_behavior: 'default_incomplete',
     payment_settings: { save_default_payment_method: 'on_subscription' },
+    // stripe-webhook reads these to create the membership row
+    metadata: { supabase_user_id: user.id, tier, child_id: childId ?? '' },
     expand: ['latest_invoice.confirmation_secret'],
   });
 

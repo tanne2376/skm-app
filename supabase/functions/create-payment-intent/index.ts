@@ -38,10 +38,13 @@ Deno.serve(async (req) => {
 
     const { data: session } = await adminClient
       .from('class_sessions')
-      .select('*, class_templates(name)')
+      .select('*, class_templates(name, level)')
       .eq('id', id)
       .single();
     if (!session || session.is_cancelled) return errorResponse('Session not available', 400);
+    if ((session as any).class_templates?.level === 'kids') {
+      return errorResponse('Kids classes are only available with a kids membership.', 403);
+    }
     description = `Class booking: ${(session as any).class_templates?.name}`;
 
   } else {

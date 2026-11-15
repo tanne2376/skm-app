@@ -2,7 +2,7 @@ export type UserRole = 'student' | 'teacher' | 'admin';
 export type BookingStatus = 'confirmed' | 'waitlisted' | 'cancelled';
 export type PaymentMethod = 'app' | 'cash' | 'membership' | 'block';
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'no_refund';
-export type MembershipTier = 'two_per_week' | 'unlimited';
+export type MembershipTier = 'two_per_week' | 'unlimited' | 'kids';
 export type MembershipStatus = 'active' | 'cancelling' | 'cancelled' | 'past_due';
 export type OneToOneStatus = 'available' | 'booked' | 'cancelled' | 'completed';
 export type LocationType = 'predefined' | 'custom';
@@ -111,7 +111,8 @@ export interface ClassSession {
 export interface Booking {
   id: string;
   session_id: string;
-  student_id: string;
+  student_id: string; // the account holder, who pays and manages the booking
+  child_id: string | null; // set when the booking is for one of their children
   status: BookingStatus;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
@@ -127,6 +128,7 @@ export type MembershipPaymentMethod = 'stripe' | 'cash';
 export interface Membership {
   id: string;
   student_id: string;
+  child_id: string | null; // set (only) for the kids tier
   tier: MembershipTier;
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
@@ -182,7 +184,8 @@ export interface ClassSessionWithDetails extends ClassSession {
   teacher: Pick<Profile, 'id' | 'full_name'> | null;
   confirmed_count: number;
   waitlist_count: number;
-  user_booking?: Booking;
+  user_booking?: Booking; // the account holder's own booking
+  child_bookings: Booking[]; // live bookings for the account's children (kids classes)
   effective_capacity: number;
   effective_price: number;
 }

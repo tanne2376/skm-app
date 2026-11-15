@@ -109,18 +109,23 @@ export function useBookSession() {
 // classes waitlist doesn't accept it.
 type ClassPaymentMethod = Extract<PaymentMethod, 'app' | 'cash' | 'membership'>;
 
-export async function joinWaitlist(sessionId: string, paymentMethod: ClassPaymentMethod): Promise<number> {
+export async function joinWaitlist(
+  sessionId: string,
+  paymentMethod: ClassPaymentMethod,
+  childId?: string,
+): Promise<number> {
   // Server-side RPC so the position read bypasses RLS (students can't
   // see each other's bookings) and concurrent joiners serialize on a
   // per-session advisory lock. Returns the assigned waitlist position.
   const { data, error } = await supabase.rpc('join_session_waitlist', {
     p_session_id: sessionId,
     p_payment_method: paymentMethod,
+    ...(childId && { p_child_id: childId }),
   });
 
   if (error) {
-    if (error.code === '23505' || /already have a booking/i.test(error.message)) {
-      throw new Error('You already have a booking for this class.');
+    if (error.code === '23505' || /already (have|has) a booking/i.test(error.message)) {
+      throw new Error(childId ? 'This child already has a booking for this class.' : 'You already have a booking for this class.');
     }
     throw new Error(error.message || 'Failed to join waitlist.');
   }
@@ -146,6 +151,40 @@ export function useJoinWaitlist() {
     },
     onError: (error: Error) => {
       Alert.alert('Waitlist', error.message);
+    },
+  });
+}
+
+interface BookChildParams {
+  session: ClassSessionWithDetails;
+  childId: string;
+  membershipId: string; // the child's kids membership
+}
+
+/**
+ * Books a child into a kids class with their kids membership, or puts them
+ * on the waitlist when the class is full. Kids classes have no other way in.
+ */
+export function useBookChild() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ session, childId, membershipId }: BookChildParams) => {
+      if (session.confirmed_count >= session.effective_capacity) {
+        await joinWaitlist(session.id, 'membership', childId);
+        return 'waitlisted' as const;
+      }
+      const { error } = await invokeFunction('book-with-membership', {
+        session_id: session.id, membership_id: membershipId, child_id: childId,
+      });
+      if (error) throw new Error(error.message ?? 'Failed to book class.');
+      return 'booked' as const;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
+    },
+    onError: (error: Error) => {
+      Alert.alert('Booking failed', error.message);
     },
   });
 }
