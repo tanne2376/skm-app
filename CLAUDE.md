@@ -38,7 +38,7 @@ EAS_PROJECT_ID=...   # only needed for EAS cloud builds
 Supabase secrets (set via `npx supabase secrets set ... --project-ref amvajuqaxvedxlmszyjh`):
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_TWO_PER_WEEK` = `price_1TGlQORuKnRvAEFQUYl0WUqm`
+- `STRIPE_PRICE_TWO_PER_WEEK` = `price_1TGlQORuKnRvAEFQUYl0WUqm` (retired; kept for existing subscriptions)
 - `STRIPE_PRICE_UNLIMITED` = `price_1TGlQQRuKnRvAEFQHtWzcWPT`
 - `STRIPE_PRICE_KIDS` = `price_1UYmYQRuKnRvAEFQvkDV9iKU`
 
@@ -46,16 +46,16 @@ Supabase secrets (set via `npx supabase secrets set ... --project-ref amvajuqaxv
 - **Account:** `acct_1T4ThJRuKnRvAEFQ` (SKM sandbox)
 - **Webhook URL:** `https://amvajuqaxvedxlmszyjh.supabase.co/functions/v1/stripe-webhook`
 - **Webhook events:** `payment_intent.succeeded`, `payment_intent.payment_failed`, `invoice.payment_succeeded`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`
-- **Products:** SKM 2x Per Week (£80/mo) · SKM Unlimited (£100/mo) · SKM Kids (£40/mo per child)
+- **Products:** SKM 2x Per Week (£80/mo, retired) · SKM Unlimited (£100/mo) · SKM Kids (£40/mo per child)
 
 ## Timezone
 All users, teachers, and admins are in the **UK timezone**. Do not add UTC-conversion logic or `getUTC*` Date methods — local-time `Date` APIs are intentional. Supabase Edge Functions run in UTC but session times are stored as naive time-of-day strings (no offset), so the same parsing works in both contexts for all practical purposes.
 
 ## Key business rules
 - Class price: £15 default (configurable per template/session override)
-- Memberships: £80/mo (2x/week) or £100/mo (unlimited), Stripe auto-renewing
+- Memberships: £100/mo (unlimited), Stripe auto-renewing. The £80/mo 2x/week tier is **retired**: no new sign-ups (rejected by `create-subscription` and `create_cash_membership`), but existing `two_per_week` rows still work until cancelled
 - Kids membership: £40/mo **per child** (`memberships.child_id`), unlimited kids classes. It's the only way into a `kids` class: those take only child bookings (`bookings.child_id`, student_id = parent) paid by that child's kids membership. Adult memberships don't cover kids classes. Enforced by the `validate_booking` trigger.
-- 2x/week quota tracked per **ISO week of the session date** (not booking date)
+- (Legacy) 2x/week quota tracked per **ISO week of the session date** (not booking date)
 - Cancel **>3 hrs** before class → full refund; **≤3 hrs** → no refund, revenue kept
 - Waitlist: FIFO, auto-charged on promotion (requires saved Stripe PaymentMethod)
 - 1-to-1s are NOT covered by membership; price set per session by teacher/admin

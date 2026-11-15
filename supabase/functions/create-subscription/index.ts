@@ -12,11 +12,15 @@ Deno.serve(async (req) => {
   if (!user) return errorResponse('Unauthorized', 401);
 
   const { tier, childId } = await req.json() as {
-    tier: 'two_per_week' | 'unlimited' | 'kids';
+    tier: 'unlimited' | 'kids';
     childId?: string;
   };
 
-  if (!['two_per_week', 'unlimited', 'kids'].includes(tier)) {
+  // 2x/week is retired; older app builds may still offer it.
+  if ((tier as string) === 'two_per_week') {
+    return errorResponse('The 2x per week membership is no longer available. Please choose Unlimited.', 400);
+  }
+  if (!['unlimited', 'kids'].includes(tier)) {
     return errorResponse('Invalid membership tier.', 400);
   }
   // A kids membership is per child; adult memberships are for the account holder.
@@ -94,7 +98,6 @@ Deno.serve(async (req) => {
   }
 
   const PRICES = {
-    two_per_week: { priceId: Deno.env.get('STRIPE_PRICE_TWO_PER_WEEK'), amount: 8000, label: '2x/Week' },
     unlimited: { priceId: Deno.env.get('STRIPE_PRICE_UNLIMITED'), amount: 10000, label: 'Unlimited' },
     kids: { priceId: Deno.env.get('STRIPE_PRICE_KIDS'), amount: 4000, label: `Kids (${childName})` },
   } as const;

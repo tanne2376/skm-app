@@ -199,21 +199,6 @@ export default function MembershipScreen() {
             <Text style={styles.sectionTitle}>Choose your plan</Text>
 
             <TierCard
-              title="2x per Week"
-              price={MEMBERSHIP_PRICES_PENCE.two_per_week}
-              perks={[
-                'Up to 2 classes per week',
-                'Any adult class in the timetable',
-                'Cancel anytime',
-              ]}
-              onSubscribe={() => handleSubscribe({ tier: 'two_per_week' })}
-              onPayCash={() => handlePayCash({ tier: 'two_per_week' })}
-              subscribeLoading={isSelecting({ tier: 'two_per_week' }, 'stripe')}
-              cashLoading={isSelecting({ tier: 'two_per_week' }, 'cash')}
-              disabled={!!selecting}
-            />
-
-            <TierCard
               title="Unlimited"
               price={MEMBERSHIP_PRICES_PENCE.unlimited}
               perks={[
