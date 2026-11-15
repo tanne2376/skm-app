@@ -12,8 +12,9 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { UserAvatarButton, UserDetailsSheet } from '@/components/UserDetailsSheet';
-import { supabase } from '@/lib/supabase';
+import { supabase, invokeFunction } from '@/lib/supabase';
 import { formatGBP } from '@/lib/stripe';
+import { toISODate } from '@/lib/waiver';
 import { ClassLevel, ClassTemplate, Profile } from '@/types';
 
 type ManageTab = 'timetable' | 'users';
@@ -218,18 +219,77 @@ function TimetableTab() {
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
 
+  // Clears out the template's upcoming sessions, then soft-deletes it, so
+  // sessions don't linger on the timetable (students can't read inactive
+  // templates, so orphaned sessions would come back with a null template).
+  // Unbooked sessions are deleted outright; any with live bookings go through
+  // cancel-class-session for refunds, slot release and notifications
+  // (bookings.session_id is ON DELETE RESTRICT, so they can't be deleted).
+  // Already-cancelled sessions that still hold live bookings are re-run, since
+  // cancel-class-session is idempotent. If anything fails the template stays
+  // active so the admin can retry Delete.
   const deleteTemplate = useMutation({
     mutationFn: async (id: string) => {
+      const { data: sessions, error: sessErr } = await supabase
+        .from('class_sessions')
+        .select('id, session_date, end_time, is_cancelled, bookings (status)')
+        .eq('template_id', id)
+        .gte('session_date', toISODate(new Date()));
+      if (sessErr) throw sessErr;
+
+      const now = Date.now();
+      const upcoming = (sessions ?? []).filter(
+        s => new Date(`${s.session_date}T${s.end_time}`).getTime() > now,
+      );
+      const hasLive = (s: (typeof upcoming)[number]) =>
+        s.bookings.some(b => b.status === 'confirmed' || b.status === 'waitlisted');
+
+      const toCancel = upcoming
+        .filter(s => (s.is_cancelled ? hasLive(s) : s.bookings.length > 0))
+        .map(s => s.id);
+
+      // Delete one at a time: a booking committed after the scan makes that
+      // delete fail, so route the session to cancellation instead.
+      for (const s of upcoming.filter(s => !s.is_cancelled && s.bookings.length === 0)) {
+        const { error: delErr } = await supabase.from('class_sessions').delete().eq('id', s.id);
+        if (delErr) toCancel.push(s.id);
+      }
+
+      let failed = 0;
+      let refundErrors = 0;
+      for (const sessionId of toCancel) {
+        const { data, error: cancelErr } = await invokeFunction<{ refundErrors?: number }>(
+          'cancel-class-session',
+          { sessionId, reason: 'Class removed from the timetable' },
+        );
+        if (cancelErr) failed++;
+        else refundErrors += data?.refundErrors ?? 0;
+      }
+      // Refund failures are already final for those bookings, so report them
+      // on every path, including when the delete itself fails.
+      const refundNote = refundErrors > 0
+        ? ` ${refundErrors} refund(s) failed. Check the Stripe dashboard and refund manually.`
+        : '';
+
+      if (failed > 0) {
+        throw new Error(`${failed} upcoming session(s) couldn't be cancelled, so the class was kept. Try deleting it again.${refundNote}`);
+      }
+
       const { error } = await supabase
         .from('class_templates')
         .update({ is_active: false })
         .eq('id', id);
-      if (error) throw error;
+      if (error) throw new Error(`${error.message}${refundNote}`);
+
+      if (refundNote) Alert.alert('Class removed', refundNote.trim());
     },
     onSuccess: () => {
-      invalidateAll();
       setShowTeacherPicker(false);
       setEditingTemplate(null);
+    },
+    onSettled: () => {
+      invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ['class_sessions'] });
     },
     onError: (e: Error) => Alert.alert('Error', e.message),
   });
@@ -401,7 +461,7 @@ function TimetableTab() {
                 variant="danger"
                 size="md"
                 onPress={() =>
-                  Alert.alert('Delete Class', `Remove "${editingTemplate?.name}" from the timetable?`, [
+                  Alert.alert('Delete Class', `Remove "${editingTemplate?.name}" from the timetable? Upcoming sessions will be removed, and anyone booked will be refunded and notified.`, [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Delete', style: 'destructive', onPress: () => deleteTemplate.mutate(editingTemplate!.id) },
                   ])
