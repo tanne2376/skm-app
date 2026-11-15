@@ -265,22 +265,23 @@ function TimetableTab() {
         if (cancelErr) failed++;
         else refundErrors += data?.refundErrors ?? 0;
       }
+      // Refund failures are already final for those bookings, so report them
+      // on every path, including when the delete itself fails.
+      const refundNote = refundErrors > 0
+        ? ` ${refundErrors} refund(s) failed. Check the Stripe dashboard and refund manually.`
+        : '';
+
       if (failed > 0) {
-        throw new Error(`${failed} upcoming session(s) couldn't be cancelled, so the class was kept. Try deleting it again.`);
+        throw new Error(`${failed} upcoming session(s) couldn't be cancelled, so the class was kept. Try deleting it again.${refundNote}`);
       }
 
       const { error } = await supabase
         .from('class_templates')
         .update({ is_active: false })
         .eq('id', id);
-      if (error) throw error;
+      if (error) throw new Error(`${error.message}${refundNote}`);
 
-      if (refundErrors > 0) {
-        Alert.alert(
-          'Class removed',
-          `${refundErrors} refund(s) failed. Check the Stripe dashboard and refund manually.`,
-        );
-      }
+      if (refundNote) Alert.alert('Class removed', refundNote.trim());
     },
     onSuccess: () => {
       setShowTeacherPicker(false);
