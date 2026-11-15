@@ -128,6 +128,8 @@ Deno.serve(async (req) => {
       .eq('id', bookingId)
       .eq('status', 'waitlisted')
       .select('id');
+    // class_full: enforce_session_capacity — someone took the place first.
+    if (error?.hint === 'class_full') return errorResponse('No spots available.', 409);
     if (error) return errorResponse(error.message, 500);
     if (!updated?.length) {
       return errorResponse('Spot is no longer available.', 409);
@@ -197,6 +199,8 @@ Deno.serve(async (req) => {
       .eq('id', bookingId)
       .eq('status', 'waitlisted')
       .select('id');
+    // class_full: enforce_session_capacity — someone took the place first.
+    if (error?.hint === 'class_full') return errorResponse('No spots available.', 409);
     if (error) return errorResponse(error.message, 500);
     if (!updated?.length) {
       return errorResponse('Spot is no longer available.', 409);

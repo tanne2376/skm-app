@@ -1,13 +1,11 @@
--- Enforce class capacity when a confirmed booking is inserted.
+-- Enforce class capacity whenever a booking becomes confirmed.
 --
--- Callers checked capacity before inserting, but nothing stopped two
--- checkouts for the last place from both inserting (book-with-membership
--- didn't check at all). A per-session advisory lock serialises confirmed
--- inserts for a session; the count runs after the lock, so it sees any
--- booking committed by the transaction that held it.
---
--- Only INSERTs: waitlist promotions/claims (UPDATE waitlisted → confirmed)
--- happen when a place frees up and are serialised by their own RPCs.
+-- Callers checked capacity first, but nothing stopped two of them taking
+-- the last place at once (book-with-membership didn't check at all). This
+-- covers new confirmed bookings and bookings moving to confirmed (waitlist
+-- claims) or to another session. A per-session advisory lock serialises
+-- them; the count runs after the lock, so it sees any booking committed by
+-- the transaction that held it.
 
 create or replace function enforce_session_capacity()
 returns trigger
@@ -19,6 +17,11 @@ declare
   v_capacity integer;
   v_confirmed integer;
 begin
+  -- Already confirmed in this session: it's counted, nothing to check.
+  if tg_op = 'UPDATE' and old.status = 'confirmed' and old.session_id = new.session_id then
+    return new;
+  end if;
+
   perform pg_advisory_xact_lock(hashtextextended('booking_capacity:' || new.session_id::text, 0));
 
   select coalesce(s.capacity, t.capacity)
@@ -50,7 +53,7 @@ revoke execute on function enforce_session_capacity() from public, anon, authent
 
 -- Named to sort after bookings_validate, so waiver/kids errors win.
 create trigger bookings_validate_capacity
-  before insert on bookings
+  before insert or update of status, session_id on bookings
   for each row
   when (new.status = 'confirmed')
   execute function enforce_session_capacity();
