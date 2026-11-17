@@ -1,11 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, KeyboardAvoidingView, Modal, Platform, StyleSheet, TouchableOpacity } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
+  TextInput, TouchableOpacity, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants';
+
+/** Space kept between a focused input and the keyboard / top of the sheet. */
+const FOCUS_MARGIN = 24;
 
 interface SlideUpModalProps {
   visible: boolean;
   onDismiss: () => void;
   children: React.ReactNode;
+  /**
+   * Caps the sheet's height. Sheets that set this (or `fullScreen`) manage their
+   * own scrolling (lists, pickers), so their content isn't wrapped in the
+   * keyboard-aware ScrollView that form sheets get.
+   */
   maxHeight?: number | `${number}%`;
   fullScreen?: boolean;
   /**
@@ -18,12 +30,59 @@ interface SlideUpModalProps {
 }
 
 export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScreen, onClosed }: SlideUpModalProps) {
+  const insets = useSafeAreaInsets();
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetY = useRef(new Animated.Value(600)).current;
   // Keep the Modal mounted until the close animation finishes
   const [mounted, setMounted] = useState(visible);
   const onClosedRef = useRef(onClosed);
   onClosedRef.current = onClosed;
+
+  // Form sheets scroll inside whatever space the keyboard leaves them
+  const scrollable = !fullScreen && maxHeight == null;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const viewportHeight = useRef(0);
+
+  /** Scrolls the focused input (if it's in this sheet) clear of the keyboard. */
+  const revealFocusedInput = useCallback(() => {
+    const scroll = scrollRef.current;
+    const input = TextInput.State.currentlyFocusedInput();
+    // getInnerViewRef exists at runtime but is missing from RN's TS types; the
+    // new architecture's measureLayout needs a host ref, not getInnerViewNode's tag.
+    const content = (scroll as unknown as { getInnerViewRef?: () => View | null } | null)?.getInnerViewRef?.();
+    if (!scroll || !input || !content || viewportHeight.current === 0) return;
+    input.measureLayout(
+      content,
+      (_x, y, _w, h) => {
+        const top = scrollY.current;
+        const bottom = top + viewportHeight.current;
+        if (y + h + FOCUS_MARGIN > bottom) {
+          scroll.scrollTo({ y: y + h + FOCUS_MARGIN - viewportHeight.current, animated: true });
+        } else if (y - FOCUS_MARGIN < top) {
+          scroll.scrollTo({ y: Math.max(0, y - FOCUS_MARGIN), animated: true });
+        }
+      },
+      () => {}, // focused input belongs to another view
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !scrollable) return;
+    // Backstop for when the sheet's size doesn't change but the keyboard did
+    const sub = Keyboard.addListener('keyboardDidShow', () => requestAnimationFrame(revealFocusedInput));
+    return () => sub.remove();
+  }, [mounted, scrollable, revealFocusedInput]);
+
+  const onScrollLayout = useCallback((e: LayoutChangeEvent) => {
+    viewportHeight.current = e.nativeEvent.layout.height;
+    // The sheet shrinks when the keyboard pushes it up: re-check the focused input
+    requestAnimationFrame(revealFocusedInput);
+  }, [revealFocusedInput]);
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollY.current = e.nativeEvent.contentOffset.y;
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -68,23 +127,44 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
         <TouchableOpacity style={{ flex: 1 }} onPress={onDismiss} activeOpacity={1} />
       </Animated.View>
 
-      {/* Sliding sheet */}
-      <Animated.View
-        style={[
-          styles.sheetWrapper,
-          fullScreen ? styles.sheetWrapperFull : maxHeight ? { maxHeight } : undefined,
-          { transform: [{ translateY: sheetY }] },
-        ]}
+      {/*
+        The KAV must span the whole screen: it computes the keyboard overlap from
+        its own layout frame (relative to its parent), so nested inside the
+        bottom-anchored sheet it sees y=0 and never adds padding for short sheets.
+        box-none lets taps above the sheet fall through to the backdrop.
+      */}
+      <KeyboardAvoidingView
+        behavior={fullScreen && Platform.OS === 'android' ? 'height' : 'padding'}
+        style={[styles.kav, !fullScreen && { paddingTop: insets.top }]}
+        pointerEvents="box-none"
       >
-        <KeyboardAvoidingView
-          // 'height' only works for flex-filled sheets; content-sized sheets need
-          // 'padding' so the bottom-anchored content is pushed above the keyboard
-          behavior={fullScreen && Platform.OS === 'android' ? 'height' : 'padding'}
-          style={fullScreen ? styles.kavFull : undefined}
+        {/* Sliding sheet — shrinks (and scrolls) if the keyboard leaves too little room */}
+        <Animated.View
+          style={[
+            fullScreen ? styles.sheetFull : styles.sheet,
+            maxHeight != null && !fullScreen ? { maxHeight } : undefined,
+            { transform: [{ translateY: sheetY }] },
+          ]}
         >
-          {children}
-        </KeyboardAvoidingView>
-      </Animated.View>
+          {scrollable ? (
+            <ScrollView
+              ref={scrollRef}
+              style={styles.scroll}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+              overScrollMode="never"
+              showsVerticalScrollIndicator={false}
+              onLayout={onScrollLayout}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            children
+          )}
+        </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -93,20 +173,18 @@ const styles = StyleSheet.create({
   backdrop: {
     backgroundColor: 'rgba(0,0,0,0.7)',
   },
-  sheetWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  sheetWrapperFull: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  kavFull: {
+  kav: {
     flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    flexShrink: 1,
+  },
+  sheetFull: {
+    flex: 1,
+  },
+  scroll: {
+    flexGrow: 0,
+    flexShrink: 1,
   },
 });
