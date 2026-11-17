@@ -42,6 +42,12 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
   const scrollable = !fullScreen && maxHeight == null;
   const scrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(0);
+  // A newly mounted ScrollView (e.g. back from the full-screen picker) starts at
+  // offset 0; drop the offset tracked for the previous instance.
+  const attachScroll = useCallback((node: ScrollView | null) => {
+    scrollRef.current = node;
+    if (node) scrollY.current = 0;
+  }, []);
   const viewportHeight = useRef(0);
 
   /** Scrolls the focused input (if it's in this sheet) clear of the keyboard. */
@@ -78,6 +84,13 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
     viewportHeight.current = e.nativeEvent.layout.height;
     // The sheet shrinks when the keyboard pushes it up: re-check the focused input
     requestAnimationFrame(revealFocusedInput);
+  }, [revealFocusedInput]);
+
+  // Focus moving between inputs while the keyboard stays up fires no keyboard or
+  // layout event. Focus only moves by tapping here, and TextInput focuses on
+  // release, so re-check shortly after any touch in the sheet ends.
+  const onSheetTouchEnd = useCallback(() => {
+    setTimeout(revealFocusedInput, 50);
   }, [revealFocusedInput]);
 
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -148,13 +161,14 @@ export function SlideUpModal({ visible, onDismiss, children, maxHeight, fullScre
         >
           {scrollable ? (
             <ScrollView
-              ref={scrollRef}
+              ref={attachScroll}
               style={styles.scroll}
               keyboardShouldPersistTaps="handled"
               bounces={false}
               overScrollMode="never"
               showsVerticalScrollIndicator={false}
               onLayout={onScrollLayout}
+              onTouchEnd={onSheetTouchEnd}
               onScroll={onScroll}
               scrollEventThrottle={16}
             >
