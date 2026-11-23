@@ -22,11 +22,14 @@ npm test              # Jest unit tests
 > **Expo Go will not work** — Stripe, SecureStore, and push notifications all require a native dev build.
 
 ## Releasing
-- **Native changes** (new native module/plugin, permissions, `app.config.ts` native fields): bump `version`, `ios.buildNumber`, `android.versionCode`, then `npx eas-cli build --platform all --profile production` and submit for store review.
+**Env check (before any build or update):** `npx eas-cli env:list production` must list `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` and `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` with **plain text or sensitive** visibility (not secret: secret values can't be read into the bundle, and a missing Supabase value makes `lib/supabase.ts` throw on launch). Builds and updates use that environment, not `.env.local`.
+
+- **Native changes** (new native module/plugin, permissions, `app.config.ts` native fields): run the env check, bump `version`, `ios.buildNumber`, `android.versionCode`, then `npx eas-cli build --platform all --profile production` and submit for store review.
 - **JS-only fixes**: OTA via EAS Update. It reaches only builds made with `updates.url` (1.1.1+) whose runtime fingerprint matches.
-  1. Confirm the EAS `production` environment has `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` and `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`npx eas-cli env:list production`); updates are bundled from that environment, not `.env.local`.
-  2. `npx eas-cli fingerprint:compare --build-id <id> --environment production`: must report a match.
+  1. Run the env check.
+  2. For **each platform**, take the current production build ID (`npx eas-cli build:list --platform ios` / `--platform android`) and run `npx eas-cli fingerprint:compare --build-id <id> --environment production`. Both must report a match; if only one does, publish with `--platform <that one>` and ship a store build for the other.
   3. `npx eas-cli update --channel production --environment production --message "..."`
+
   `fingerprint.config.js` excludes version numbers from the fingerprint; the `EXPO_PUBLIC_*` keys are read via `process.env` (inlined into the JS bundle), not app config `extra`, so they don't affect it either.
 
 ## Environment
