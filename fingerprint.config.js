@@ -6,5 +6,9 @@ module.exports = {
   // change native compatibility. Without this, bumping android.versionCode alone
   // gave iOS and Android builds of the same code different runtime versions, so an
   // OTA update could only target one of them.
-  sourceSkips: SourceSkips.ExpoConfigVersions,
+  // Setting sourceSkips replaces the default, so keep the default
+  // (PackageJsonAndroidAndIosScriptsIfNotContainRun) alongside it.
+  sourceSkips:
+    SourceSkips.ExpoConfigVersions |
+    SourceSkips.PackageJsonAndroidAndIosScriptsIfNotContainRun,
 };

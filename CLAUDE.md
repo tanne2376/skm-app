@@ -23,7 +23,11 @@ npm test              # Jest unit tests
 
 ## Releasing
 - **Native changes** (new native module/plugin, permissions, `app.config.ts` native fields): bump `version`, `ios.buildNumber`, `android.versionCode`, then `npx eas-cli build --platform all --profile production` and submit for store review.
-- **JS-only fixes**: `npx eas-cli update --channel production --environment production --message "..."`. It reaches only builds made with `updates.url` (1.1.1+) whose runtime fingerprint matches; check with `npx eas-cli fingerprint:compare --build-id <id>`. `fingerprint.config.js` excludes version numbers from the fingerprint.
+- **JS-only fixes**: OTA via EAS Update. It reaches only builds made with `updates.url` (1.1.1+) whose runtime fingerprint matches.
+  1. Confirm the EAS `production` environment has `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` and `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`npx eas-cli env:list production`); updates are bundled from that environment, not `.env.local`.
+  2. `npx eas-cli fingerprint:compare --build-id <id> --environment production`: must report a match.
+  3. `npx eas-cli update --channel production --environment production --message "..."`
+  `fingerprint.config.js` excludes version numbers from the fingerprint; the `EXPO_PUBLIC_*` keys are read via `process.env` (inlined into the JS bundle), not app config `extra`, so they don't affect it either.
 
 ## Environment
 `.env.local` — never commit this file. Required keys:

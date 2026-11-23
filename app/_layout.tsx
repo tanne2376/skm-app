@@ -4,7 +4,6 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Linking from 'expo-linking';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
@@ -20,7 +19,8 @@ const queryClient = new QueryClient({
   },
 });
 
-const stripePublishableKey = Constants.expoConfig?.extra?.stripePublishableKey as string;
+// Inlined into the JS bundle (see lib/supabase.ts)
+const stripePublishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
 function AuthGuard() {
   const { session, isLoading, isPasswordRecovery, isEmailVerified } = useAuth();
