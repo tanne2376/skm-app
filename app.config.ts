@@ -5,9 +5,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'Switch-Kick Mafia',
   slug: 'switch-kick-mafia',
   owner: 'bt439',
-  version: '1.1.0',
+  version: '1.1.1',
   // Scope OTA updates to binaries with matching native code (e.g. react-native-svg).
   runtimeVersion: { policy: 'fingerprint' },
+  // EAS Update endpoint. Builds made without this can't receive OTA updates at all.
+  updates: {
+    url: 'https://u.expo.dev/01cd9e9e-c880-4762-93b1-8fbac1fa0a07',
+  },
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -16,7 +20,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.switchkickmafia.app',
-    buildNumber: '7',
+    buildNumber: '8',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription: 'Used to scan your payment card when adding it to checkout.',
@@ -24,7 +28,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: 'com.switchkickmafia.app',
-    versionCode: 2,
+    versionCode: 4,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0A0A0A',
@@ -59,9 +63,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
   ],
   extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-    stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     eas: {
       projectId: '01cd9e9e-c880-4762-93b1-8fbac1fa0a07',
     },
