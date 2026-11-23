@@ -39,7 +39,8 @@
   "submit": {
     "production": {
       "ios": {
-        "bundleIdentifier": "com.switchkickmafia.app"
+        "bundleIdentifier": "com.switchkickmafia.app",
+        "ascAppId": "6772533194"
       },
       "android": {
         "track": "internal",

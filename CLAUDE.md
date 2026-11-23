@@ -21,6 +21,10 @@ npm test              # Jest unit tests
 
 > **Expo Go will not work** — Stripe, SecureStore, and push notifications all require a native dev build.
 
+## Releasing
+- **Native changes** (new native module/plugin, permissions, `app.config.ts` native fields): bump `version`, `ios.buildNumber`, `android.versionCode`, then `npx eas-cli build --platform all --profile production` and submit for store review.
+- **JS-only fixes**: `npx eas-cli update --channel production --environment production --message "..."`. It reaches only builds made with `updates.url` (1.1.1+) whose runtime fingerprint matches; check with `npx eas-cli fingerprint:compare --build-id <id>`. `fingerprint.config.js` excludes version numbers from the fingerprint.
+
 ## Environment
 `.env.local` — never commit this file. Required keys:
 ```
